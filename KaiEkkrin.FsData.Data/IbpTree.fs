@@ -69,16 +69,13 @@ module IbpTree =
             let rec insert (l: KeyValuePair<'TKey, Node<'TKey, 'TValue> > list) =
                 match l with
                 | [] -> [KeyValuePair (key, insertInLeafNode key value (LeafNode []) |> Leaf)]
-                | x::[] ->
-                    let newKey = if Comparer.Compare (key, x.Key) < 0 then key else x.Key
-                    in [KeyValuePair (newKey, insertInNode key value x.Value)]
+                | x::xs when Comparer.Compare (key, x.Key) < 0 ->
+                    (KeyValuePair (key, insertInNode key value x.Value))::xs
+                | x::[] -> [KeyValuePair (x.Key, insertInNode key value x.Value)]
                 | x::y::xs ->
-                    match Comparer.Compare (key, y.Key) with
-                    | n when n < 0 ->
-                        // TODO can I pull this comparison up?
-                        let newKey = if Comparer.Compare (key, x.Key) < 0 then key else x.Key
-                        in (KeyValuePair (newKey, insertInNode key value x.Value))::y::xs
-                    | _ -> insert (y::xs)
+                    if Comparer.Compare (key, y.Key) < 0
+                    then (KeyValuePair (x.Key, insertInNode key value x.Value))::y::xs
+                    else insert (y::xs)
 
             // TODO splitting as required.
             insert node.Nodes |> IntNode<'TKey, 'TValue>
