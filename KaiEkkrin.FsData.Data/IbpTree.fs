@@ -2,9 +2,10 @@ namespace KaiEkkrin.FsData.Data
 
 open System
 open System.Collections.Generic
+open System.Text
 
 // With reference to https://www.geeksforgeeks.org/introduction-of-b-tree/
-module IpbTree =
+module IbpTree =
 
     // Node types.
     type IntNode<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > = struct
@@ -22,14 +23,38 @@ module IpbTree =
         | Leaf of LeafNode<'TKey, 'TValue>
 
     // Overall wrapper and settings for the tree.
+    // TODO track the count
     type Tree<'TKey, 'TValue when 'TKey :> IComparable<'TKey> >(
         B: int, Comparer: IComparer<'TKey>, Root: IntNode<'TKey, 'TValue>) =
 
+        // ## Debug print ##
+        let rec debugPrintIntNode prefix (sb: StringBuilder) (node: IntNode<'TKey, 'TValue>) =
+            for kv in node.Nodes do
+                sb.AppendLine $"{prefix} {kv.Key} ->" |> ignore
+                debugPrintNode $"{prefix}  " sb kv.Value
+
+        and debugPrintLeafNode prefix (sb: StringBuilder) (node: LeafNode<'TKey, 'TValue>) =
+            for kv in node.Values do
+                sb.AppendLine $"{prefix} {kv.Key} = {kv.Value}" |> ignore
+
+        and debugPrintNode prefix (sb: StringBuilder) (node: Node<'TKey, 'TValue>) =
+            match node with
+            | Int intNode -> debugPrintIntNode prefix sb intNode
+            | Leaf leafNode -> debugPrintLeafNode prefix sb leafNode
+
         // ## Search for one item ##
         let rec findInIntNode key (node: IntNode<'TKey, 'TValue>) =
-            match List.tryFind (fun (n: KeyValuePair<'TKey, Node<'TKey, 'TValue> >) -> Comparer.Compare (key, n.Key) = 0) node.Nodes with
-            | Some kv -> findInNode key kv.Value
-            | None -> None
+            let rec find (l: KeyValuePair<'TKey, Node<'TKey, 'TValue> > list) =
+                match l with
+                | [] -> None
+                | x::_ when Comparer.Compare (key, x.Key) < 0 -> None
+                | x::[] -> findInNode key x.Value
+                | x::y::xs ->
+                    if Comparer.Compare (key, y.Key) < 0
+                    then findInNode key x.Value
+                    else find (y::xs)
+
+            find node.Nodes
 
         and findInLeafNode key (node: LeafNode<'TKey, 'TValue>) =
             List.tryFind (fun (v: KeyValuePair<'TKey, 'TValue>) -> Comparer.Compare (key, v.Key) = 0) node.Values
@@ -44,10 +69,15 @@ module IpbTree =
             let rec insert (l: KeyValuePair<'TKey, Node<'TKey, 'TValue> > list) =
                 match l with
                 | [] -> [KeyValuePair (key, insertInLeafNode key value (LeafNode []) |> Leaf)]
-                | x::[] -> [KeyValuePair (key, insertInNode key value x.Value)]
+                | x::[] ->
+                    let newKey = if Comparer.Compare (key, x.Key) < 0 then key else x.Key
+                    in [KeyValuePair (newKey, insertInNode key value x.Value)]
                 | x::y::xs ->
                     match Comparer.Compare (key, y.Key) with
-                    | n when n < 0 -> (KeyValuePair (key, insertInNode key value x.Value))::y::xs
+                    | n when n < 0 ->
+                        // TODO can I pull this comparison up?
+                        let newKey = if Comparer.Compare (key, x.Key) < 0 then key else x.Key
+                        in (KeyValuePair (newKey, insertInNode key value x.Value))::y::xs
                     | _ -> insert (y::xs)
 
             // TODO splitting as required.
@@ -73,17 +103,31 @@ module IpbTree =
 
         // ## Public methods ##
 
+        member this.RootNode = Root // for structured formatting
+
         member this.Insert key value =
             let newRoot = insertInIntNode key value Root
             Tree (B, Comparer, newRoot)
 
         member this.TryFind key = findInIntNode key Root
 
+        override this.ToString () =
+            // Debug print this thing
+            let sb = StringBuilder ()
+            sb.AppendFormat $"Tree({B}, " |> ignore
+            debugPrintIntNode "" sb Root
+            sb.Append ")" |> ignore
+            sb.ToString ()
+
     let create<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > cmp =
         new Tree<'TKey, 'TValue>(64_000 / sizeof<'TValue>, cmp, IntNode [])
 
     let createB<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > (b, cmp) =
         new Tree<'TKey, 'TValue>(b, cmp, IntNode [])
+
+    let empty<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > = new Tree<'TKey, 'TValue>(64_000 / sizeof<'TValue>, Comparer<'TKey>.Default, IntNode [])
+
+    let emptyB<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > b = new Tree<'TKey, 'TValue>(b, Comparer<'TKey>.Default, IntNode [])
 
     let insert<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > key value (tree: Tree<'TKey, 'TValue>) = tree.Insert key value
 
