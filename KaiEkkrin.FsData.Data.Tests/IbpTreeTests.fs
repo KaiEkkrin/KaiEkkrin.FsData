@@ -5,6 +5,8 @@ open KaiEkkrin.FsData.Data
 open Xunit
 open Xunit.Abstractions
 
+// TODO *Test for balancing* (it's the most important thing!)
+// Deliberately test using long lists of input, I think by default we don't get much
 type Tests(output: ITestOutputHelper) =
     [<Property>]
     let ``An empty tree contains nothing`` (key: int) =

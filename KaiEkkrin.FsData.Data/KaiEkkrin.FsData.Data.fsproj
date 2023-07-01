@@ -4,6 +4,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="IbpTree2.fs" />
     <Compile Include="IbpTree.fs" />
   </ItemGroup>
 </Project>

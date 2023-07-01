@@ -5,7 +5,9 @@ open System.Collections.Generic
 open System.Text
 
 // With reference to https://www.geeksforgeeks.org/introduction-of-b-tree/
-// TODO change `insert` and similar methods to be tail-recursive to avoid stack overflow :P
+// or https://www.programiz.com/dsa/b-plus-tree
+// TODO I'm pretty sure I've done this wrong, going to try again in IbpTree2,
+// move things about afterwards.
 module IbpTree =
 
     // Node types.
