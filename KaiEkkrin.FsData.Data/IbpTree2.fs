@@ -21,8 +21,8 @@ module IbpTree2 =
     // or in the case of the root node, 2 <= c <= B.
     // P pointers, K key-values
     // such that
-    // - X <= K1 for all keys X in P1
-    // - Kn-1 < X <= Kn for all keys X in Pn
+    // - X < K1 for all keys X in P1
+    // - Kn-1 <= X < Kn for all keys X in Pn
     // - Kc-1 < X for all keys X in Pc
     type IntNode<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > = struct
         // List of (P1, Kn), (P2, K2), ..., (Pc-1, Kc-1) as above
@@ -40,7 +40,7 @@ module IbpTree2 =
     // or, if it's the root node (the only node in the tree), 0 <= c <= B
     // E.g. when B=3, a leaf node may contain 1 or 2 values.
     // In addition, each leaf node logically carries an optional pointer to the next one --
-    // we won't include that in the structure but instead pass it to functions that need it
+    // we won't include that in the structure but instead pass it to functions that need it.
     and LeafNode<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > = struct
         val Values: KeyValuePair<'TKey, 'TValue> []
         new values = { Values = values }
@@ -54,88 +54,149 @@ module IbpTree2 =
 
     // When doing an insert, I'll either return a single node (updated with the new value)
     // or a split of it, (N1, K1, N2) where K is such that
-    // Key(X) <= K1 for all X in N1
-    // K1 < Key(X) for all X in N2
-    type Split<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > =
+    // Key(X) < K1 for all X in N1
+    // K1 <= Key(X) for all X in N2
+    type NodeUpdate<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > =
         | Single of Node<'TKey, 'TValue>
         | Split of Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>
 
     type Tree<'TKey, 'TValue when 'TKey :> IComparable<'TKey> >(
         B: int, Comparer: IComparer<'TKey>, Root: Node<'TKey, 'TValue>
     ) =
-        let ceilHalfB =
-            let (div, rem) = Math.DivRem(B, 2)
+        // ## Helpers ##
+
+        let divCeil (a: int) b =
+            let (div, rem) = Math.DivRem(a, b)
             if rem = 0 then div else div + 1
 
+        let lengthOfSplitIntNode = (divCeil B 2) - 1
+        let lengthOfSplitLeafNode = divCeil (B - 1) 2
+
+        let rec findIndexInLeaf i key (node: LeafNode<'TKey, 'TValue>) =
+            // TODO I could optimise this by assuming the array is in order (always true)
+            // and using a binary chop
+            if i = node.Values.Length then (i, false)
+            else
+                match Comparer.Compare(key, node.Values[i].Key) with
+                | 0 -> (i, true)
+                | n when n < 0 -> (i, false)
+                | _ -> findIndexInLeaf (i + 1) key node
+
+        let rec findIndexInInt i key (node: IntNode<'TKey, 'TValue>) =
+            // TODO I could optimise this by assuming the array is in order (always true)
+            // and using a binary chop
+            if i = node.Nodes.Length then node.Nodes.Length
+            else
+                match Comparer.Compare(key, node.Nodes[i].Key) with
+                | n when n < 0 -> i
+                | _ -> findIndexInInt (i + 1) key node
+
+        // ## Search ##
+
         let rec findInLeaf key (node: LeafNode<'TKey, 'TValue>) =
-            // TODO I can binary search this, but the built-in functions only
-            // provide exact matching :(
-            Array.tryFind (fun (kv: KeyValuePair<'TKey, 'TValue>) ->
-                Comparer.Compare(key, kv.Key) = 0) node.Values
+            match findIndexInLeaf 0 key node with
+            | (index, true) -> Some node.Values[index]
+            | _ -> None
 
         and findInInt key (node: IntNode<'TKey, 'TValue>) =
-            let rec find index =
-                if node.Nodes.Length = index then node.Last
-                elif Comparer.Compare(key, node.Nodes[index].Key) <= 0 then node.Nodes[index].Value
-                else find (index + 1)
-            
-            findInNode key (find 0)
+            let index = findIndexInInt 0 key node
+            let searchNode =
+                if index = node.Nodes.Length then node.Last else node.Nodes[index].Value
+
+            findInNode key searchNode
 
         and findInNode key (node: Node<'TKey, 'TValue>) =
             match node with
             | Int intNode -> findInInt key intNode
             | Leaf leafNode -> findInLeaf key leafNode
 
-        let rec insertInLeaf key value (node: LeafNode<'TKey, 'TValue>) =
-            // TODO I can binary search this, do the optimisation?
-            let rec findPosition index =
-                if index >= node.Values.Length then (node.Values.Length, false)
-                else
-                    match Comparer.Compare(key, node.Values[index].Key) with
-                    | 0 -> (index, true)
-                    | n when n < 0 -> (index, false)
-                    | _ -> findPosition (index + 1)
+        // ## Insert ##
 
-            let (index, isExactMatch) = findPosition 0
+        let rec insertInLeaf key value (node: LeafNode<'TKey, 'TValue>) =
+            let (index, isExactMatch) = findIndexInLeaf 0 key node
             if isExactMatch then
-                let newValues = node.Values.Clone() :?> KeyValuePair<'TKey, 'TValue> []
-                newValues[index] <- KeyValuePair(key, value)
+                let newValues =
+                    Array.init node.Values.Length (fun i ->
+                        if i = index then KeyValuePair(key, value) else node.Values[i])
+
                 newValues |> LeafNode |> Leaf |> Single
 
             elif node.Values.Length < B - 1 then
                 // Don't need to split this
                 let newLength = node.Values.Length + 1
                 let newArray =
-                    if index = 0 then
-                        Array.init newLength (fun i ->
-                            if i = 0 then KeyValuePair(key, value)
-                            else node.Values[i - 1])
-                    elif index = node.Values.Length then
-                        Array.init newLength (fun i ->
-                            if i = index then KeyValuePair(key, value)
-                            else node.Values[i])
-                    else
-                        Array.init newLength (fun i ->
-                            if i < index then node.Values[i]
-                            elif i = index then KeyValuePair(key, value)
-                            else node.Values[i - 1])
+                    Array.init newLength (fun i ->
+                        if i < index then node.Values[i]
+                        elif i = index then KeyValuePair(key, value)
+                        else node.Values[i - 1])
 
                 newArray |> LeafNode |> Leaf |> Single
 
             else
-                // Need to split this
-                failwith "TODO implement"
+                // Need to split this.
+                // TODO : Try to make the split side that gets the new node be the
+                // one that receives the fewest existing nodes (if there's a difference)
+                // The online examples don't illustrate that but it feels like in the
+                // case B=3 it's important, to avoid inserting into a 2 and getting a 3...
+                let newArray1 =
+                    Array.init lengthOfSplitLeafNode (fun i ->
+                        if i < index then node.Values[i]
+                        elif i = index then KeyValuePair(key, value)
+                        else node.Values[i - 1])
+                
+                let newArray2 =
+                    Array.init (node.Values.Length - lengthOfSplitLeafNode) (fun j ->
+                        let i = j + lengthOfSplitLeafNode
+                        if i < index then node.Values[i]
+                        elif i = index then KeyValuePair(key, value)
+                        else node.Values[i - 1])
+
+                Split (newArray1 |> LeafNode |> Leaf, newArray2[0].Key, newArray2 |> LeafNode |> Leaf)
 
         and insertInInt key value (node: IntNode<'TKey, 'TValue>) =
-            // TODO tail recursion
-            let rec insert (nodes: KeyValuePair<'TKey, Node<'TKey, 'TValue> > list) last =
-                match nodes with
-                | [] -> [KeyValuePair(key, insertInNode key value last)]
-                | x::xs when Comparer.Compare(key, x.Key) <= 0 ->
-                    KeyValuePair(x.Key, insertInNode key value x.Value)::xs
-                | x::xs -> x::insert xs last
+            let index = findIndexInInt 0 key node
+            let updated =
+                if index = node.Nodes.Length then insertInNode key value node.Last
+                else insertInNode key value node.Nodes[index].Value
 
-            failwith "TODO Implement"
+            match updated with
+            | Single update ->
+                if index = node.Nodes.Length then
+                    IntNode (node.Nodes, update) |> Int |> Single
+                else
+                    let newNodes =
+                        Array.init node.Nodes.Length (fun i ->
+                            if i = index then KeyValuePair(node.Nodes[i].Key, update)
+                            else node.Nodes[i])
+
+                    IntNode (newNodes, node.Last) |> Int |> Single
+
+            | Split (head, tailKey, tail) ->
+                if node.Nodes.Length < B - 1 then
+                    // Don't need to split this
+                    if index = node.Nodes.Length then
+                        // I'm replacing node.Last
+                        let newNodes =
+                            Array.init (node.Nodes.Length + 1) (fun i ->
+                                if i = index then KeyValuePair(tailKey, head)
+                                else node.Nodes[i])
+
+                        IntNode (newNodes, tail) |> Int |> Single
+
+                    else
+                        // I'm not replacing node.Last
+                        let newNodes =
+                            Array.init (node.Nodes.Length + 1) (fun i ->
+                                if i < index then node.Nodes[i]
+                                elif i = index then KeyValuePair(tailKey, head)
+                                elif i = index + 1 then KeyValuePair(node.Nodes[i - 1].Key, tail)
+                                else node.Nodes[i - 1])
+
+                        IntNode (newNodes, node.Last) |> Int |> Single
+
+                else
+                    // TODO Do need to split this
+                    failwith "TODO Implement"
 
         and insertInNode key value (node: Node<'TKey, 'TValue>) =
             match node with
