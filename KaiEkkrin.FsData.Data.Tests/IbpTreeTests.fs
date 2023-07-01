@@ -36,7 +36,7 @@ type Tests(output: ITestOutputHelper) =
             kvs
             |> List.fold (fun m (k, v) -> Map.add k v m) Map.empty
 
-        output.WriteLine <| sprintf "Tree for %A: %A" kvs tree
+        //output.WriteLine <| sprintf "Tree for %A: %A" kvs tree
 
         for (k, v) in expected |> Map.toSeq do
             match IbpTree.tryFind k tree with
@@ -44,4 +44,6 @@ type Tests(output: ITestOutputHelper) =
                 Assert.Equal (k, found.Key)
                 Assert.Equal (v, found.Value)
             | None ->
+                output.WriteLine <| sprintf "Building tree from %A" kvs
+                output.WriteLine <| sprintf "Not found key %d in %A" k tree
                 Assert.True (false, $"Key {k} not found") // it should be found!
