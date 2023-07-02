@@ -352,7 +352,7 @@ module IbpTree2 =
                     let newNodes2 = updated.Nodes[(lengthOfSplitIntNode + 1)..]
                     let head = IntNode (newNodes1, updated.Nodes[lengthOfSplitIntNode].Value)
                     let tailKey = updated.Nodes[lengthOfSplitIntNode].Key
-                    let tail = IntNode (newNodes2, node.Last)
+                    let tail = IntNode (newNodes2, updated.Last)
 
                     // TODO remove debug. Validate this split.
                     let keysInTail = tail.Nodes |> Array.map (fun kv -> kv.Key)
