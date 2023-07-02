@@ -1,5 +1,6 @@
 module IbpTree2TestCommon
 
+open System.Text
 open FsUnit.Xunit
 open KaiEkkrin.FsData.Data
 open Xunit.Abstractions
@@ -9,7 +10,18 @@ let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
     let tree =
         keys
         |> Array.fold (fun t key ->
-            IbpTree2.insert key (sprintf "%d" key) t
+            // Run the validation on each step, to catch any invalid trees:
+            let t2 = IbpTree2.insert key (sprintf "%d" key) t
+            match IbpTree2.debugValidate t2 with
+            | None -> t2
+            | Some err ->
+                let sb = StringBuilder ()
+                sprintf "When adding %A: %s" key err |> sb.AppendLine |> ignore
+                sb.AppendLine "-- Tree before --" |> ignore
+                t.ToString() |> sb.AppendLine |> ignore
+                sb.AppendLine "-- Tree after --" |> ignore
+                t2.ToString() |> sb.AppendLine |> ignore
+                failwith <| sb.ToString ()
         ) emptyTree
 
     output.WriteLine <| tree.ToString ()

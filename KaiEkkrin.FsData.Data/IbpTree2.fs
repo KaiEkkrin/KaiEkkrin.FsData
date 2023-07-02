@@ -67,6 +67,11 @@ module IbpTree2 =
         | Single of Node<'TKey, 'TValue>
         | Split of Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>
 
+    // The result of validating a node.
+    type NodeValidationResult<'TKey, 'TValue> =
+        | NotValid of string
+        | Valid of 'TKey []
+
     type Tree<'TKey, 'TValue when 'TKey :> IComparable<'TKey> >(
         B: int, Comparer: IComparer<'TKey>, Root: Node<'TKey, 'TValue>
     ) =
@@ -128,6 +133,90 @@ module IbpTree2 =
             match node with
             | Int intNode -> debugPrintInt prefix sb intNode
             | Leaf leafNode -> debugPrintLeaf prefix sb leafNode
+
+        // ## Debug: validate tree ##
+
+        let rec debugValidateLeaf (node: LeafNode<'TKey, 'TValue>) =
+            let keys = node.Values |> Array.map (fun kv -> kv.Key)
+            let keySet = SortedSet<'TKey>(Comparer)
+
+            // Keys must be unique and ordered
+            let isValid =
+                keys
+                |> Seq.zip keySet
+                |> Seq.fold (fun ok (a, b) -> ok && Comparer.Compare(a, b) = 0) true
+
+            if isValid then Valid keys else NotValid <| sprintf "Invalid leaf: %A" node
+
+        and debugValidateInt (node: IntNode<'TKey, 'TValue>) =
+            let keys = node.Nodes |> Array.map (fun kv -> kv.Key)
+            let keySet = SortedSet<'TKey>(Comparer)
+
+            // Keys must be unique and ordered
+            // TODO : *Sub-keys* must be unique and ordered too -- check! That's currently falling
+            // through the net
+            let isValid =
+                keys
+                |> Seq.zip keySet
+                |> Seq.fold (fun acc (a, b) ->
+                    match acc with
+                    | None -> if Comparer.Compare(a, b) = 0 then None else Some <| sprintf "Int node invalid keys: %A" node
+                    | Some err -> Some err
+                ) None
+
+            match isValid with
+            | Some err -> NotValid err
+            | None ->
+                // Each of those should validate successfully
+                node.Nodes
+                |> Seq.mapi (fun i kv ->
+                    (if i = 0 then None else Some node.Nodes[i - 1].Key), Some kv.Key, kv.Value)
+                |> Seq.append [|(Some node.Nodes[node.Nodes.Length - 1].Key, None, node.Last)|]
+                |> Seq.fold (fun result (lb, ub, n) ->
+                    match (result, debugValidateNode n, lb, ub) with
+                    | NotValid err, _, _, _ -> NotValid err
+                    | _, NotValid err, _, _ -> NotValid err
+                    | _, Valid subKeys, None, Some upperBound ->
+                        // Each of the subKeys must be < upperBound
+                        subKeys
+                        |> Array.fold (fun v k ->
+                            match v with
+                            | NotValid err -> NotValid err
+                            | Valid w ->
+                                if Comparer.Compare(k, upperBound) < 0 then Valid w
+                                else NotValid <| sprintf "In int node %A: Requires sub-key %A < %A" node k upperBound
+                        ) (Valid keys)
+
+                    | _, Valid subKeys, Some lowerBound, Some upperBound ->
+                        // Each of the subKeys must be: lowerBound <= subKey < upperBound
+                        subKeys
+                        |> Array.fold (fun v k ->
+                            match v with
+                            | NotValid err -> NotValid err
+                            | Valid w ->
+                                if Comparer.Compare(lowerBound, k) <= 0 && Comparer.Compare(k, upperBound) < 0 then Valid w
+                                else NotValid <| sprintf "In int node %A: Requires %A <= sub-key %A < %A" node lowerBound k upperBound
+                        ) (Valid keys)
+
+                    | _, Valid subKeys, Some lowerBound, None ->
+                        // Each of the subKeys must be: lowerBound <= subKey
+                        subKeys
+                        |> Array.fold (fun v k ->
+                            match v with
+                            | NotValid err -> NotValid err
+                            | Valid w ->
+                                if Comparer.Compare(lowerBound, k) <= 0 then Valid w
+                                else NotValid <| sprintf "In int node %A: Requires %A <= sub-key %A" node lowerBound k
+                        ) (Valid keys)
+
+                    | _, _, None, None -> failwithf "In int node %A: Error -- No key bounds" node
+
+                ) (Valid keys)
+
+        and debugValidateNode node =
+            match node with
+            | Int intNode -> debugValidateInt intNode
+            | Leaf leafNode -> debugValidateLeaf leafNode
 
         // ## Debug: other things ##
         let debugKeysShallow node =
@@ -241,7 +330,14 @@ module IbpTree2 =
                 let newKeySet = SortedSet<'TKey>(Comparer)
                 newKeyArray |> Array.iter (fun e -> newKeySet.Add e |> ignore)
                 if newKeySet.Count <> newKeyArray.Length then
-                    failwithf "Bad updated node: %A" updated
+                    let sb = StringBuilder ()
+                    sprintf "B=%d. On update key = %A (index = %d):" B key index |> sb.AppendLine |> ignore
+                    sb.AppendLine "Original:" |> ignore
+                    debugPrintInt "  " sb node
+                    sb.AppendLine "Updated:" |> ignore
+                    debugPrintInt "  " sb updated
+                    sprintf "Bad updated node: new keys = %A" newKeyArray |> sb.AppendLine |> ignore
+                    failwith <| sb.ToString()
 
                 if updated.Nodes.Length < B then
                     // No further splitting is required
@@ -273,6 +369,12 @@ module IbpTree2 =
             | Leaf leafNode -> insertInLeaf key value leafNode
 
         // ## Public methods ##
+
+        member this.DebugValidate () =
+            match debugValidateNode Root with
+            | NotValid err -> Some err
+            | Valid _ -> None
+
         member this.Insert key value =
             match insertInNode key value Root with
             | Single u ->
@@ -309,6 +411,9 @@ module IbpTree2 =
     let emptyB<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > b =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
         new Tree<'TKey, 'TValue>(b, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
+
+    let debugValidate<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > (tree: Tree<'TKey, 'TValue>) =
+        tree.DebugValidate ()
 
     let insert<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > key value (tree: Tree<'TKey, 'TValue>) =
         tree.Insert key value
