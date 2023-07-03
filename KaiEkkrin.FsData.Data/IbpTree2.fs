@@ -219,6 +219,7 @@ module IbpTree2 =
             | Leaf leafNode -> debugValidateLeaf leafNode
 
         // ## Debug: other things ##
+
         let debugKeysShallow node =
             match node with
             | Int intNode -> intNode.Nodes |> Array.map (fun kv -> kv.Key)
@@ -242,6 +243,29 @@ module IbpTree2 =
             match node with
             | Int intNode -> findInInt key intNode
             | Leaf leafNode -> findInLeaf key leafNode
+
+        // ## Search (forward sequence) ##
+
+        let rec findSeqInNode key node =
+            match node with
+            | Int intNode -> findSeqInInt key intNode
+            | Leaf leafNode -> findSeqInLeaf key leafNode
+
+        and findSeqInInt key node =
+            let index = findIndexInInt key node
+            if index = node.Nodes.Length then
+                // Only need to search the last node
+                findSeqInNode key node.Last
+            else
+                // Need to search from `index`, including the last
+                Seq.append (node.Nodes[index..] |> Seq.map (fun n -> n.Value)) [|node.Last|]
+                |> Seq.collect (findSeqInNode key)
+
+        and findSeqInLeaf key node =
+            match findIndexInLeaf key node with
+            | (index, _) when index < node.Values.Length ->
+                node.Values[index..] |> Seq.ofArray
+            | _ -> Seq.empty
 
         // ## Insert ##
 
@@ -273,8 +297,8 @@ module IbpTree2 =
                     let newValues2 = newValues[lengthOfSplitLeafNode..]
 
                     // TODO remove debug, checking this can't happen
-                    if Comparer.Compare(newValues1[lengthOfSplitLeafNode - 1].Key, newValues2[0].Key) >= 0 then
-                        failwithf "Erroneously split leaf with ...%A, %A..." newValues1[lengthOfSplitLeafNode - 1].Key newValues2[0].Key
+                    //if Comparer.Compare(newValues1[lengthOfSplitLeafNode - 1].Key, newValues2[0].Key) >= 0 then
+                    //    failwithf "Erroneously split leaf with ...%A, %A..." newValues1[lengthOfSplitLeafNode - 1].Key newValues2[0].Key
                 
                     Split (newValues1 |> LeafNode |> Leaf, newValues2[0].Key, newValues2 |> LeafNode |> Leaf)
 
@@ -326,18 +350,18 @@ module IbpTree2 =
                         IntNode (newNodes, node.Last)
 
                 // TODO remove debug. Validate the updated node.
-                let newKeyArray = updated.Nodes |> Array.map (fun kv -> kv.Key)
-                let newKeySet = SortedSet<'TKey>(Comparer)
-                newKeyArray |> Array.iter (fun e -> newKeySet.Add e |> ignore)
-                if newKeySet.Count <> newKeyArray.Length then
-                    let sb = StringBuilder ()
-                    sprintf "B=%d. On update key = %A (index = %d):" B key index |> sb.AppendLine |> ignore
-                    sb.AppendLine "Original:" |> ignore
-                    debugPrintInt "  " sb node
-                    sb.AppendLine "Updated:" |> ignore
-                    debugPrintInt "  " sb updated
-                    sprintf "Bad updated node: new keys = %A" newKeyArray |> sb.AppendLine |> ignore
-                    failwith <| sb.ToString()
+                //let newKeyArray = updated.Nodes |> Array.map (fun kv -> kv.Key)
+                //let newKeySet = SortedSet<'TKey>(Comparer)
+                //newKeyArray |> Array.iter (fun e -> newKeySet.Add e |> ignore)
+                //if newKeySet.Count <> newKeyArray.Length then
+                //    let sb = StringBuilder ()
+                //    sprintf "B=%d. On update key = %A (index = %d):" B key index |> sb.AppendLine |> ignore
+                //    sb.AppendLine "Original:" |> ignore
+                //    debugPrintInt "  " sb node
+                //    sb.AppendLine "Updated:" |> ignore
+                //    debugPrintInt "  " sb updated
+                //    sprintf "Bad updated node: new keys = %A" newKeyArray |> sb.AppendLine |> ignore
+                //    failwith <| sb.ToString()
 
                 if updated.Nodes.Length < B then
                     // No further splitting is required
@@ -355,11 +379,11 @@ module IbpTree2 =
                     let tail = IntNode (newNodes2, updated.Last)
 
                     // TODO remove debug. Validate this split.
-                    let keysInTail = tail.Nodes |> Array.map (fun kv -> kv.Key)
-                    keysInTail |> Array.iter (fun k ->
-                        if Comparer.Compare(k, tailKey) <= 0 then
-                            failwithf "B=%d, split at %d: Bad split of %A into head = %A, tailKey = %A, tail = %A" B lengthOfSplitIntNode updated head tailKey tail
-                    )
+                    //let keysInTail = tail.Nodes |> Array.map (fun kv -> kv.Key)
+                    //keysInTail |> Array.iter (fun k ->
+                    //    if Comparer.Compare(k, tailKey) <= 0 then
+                    //        failwithf "B=%d, split at %d: Bad split of %A into head = %A, tailKey = %A, tail = %A" B lengthOfSplitIntNode updated head tailKey tail
+                    //)
 
                     Split (head |> Int, tailKey, tail |> Int)
 
@@ -374,6 +398,8 @@ module IbpTree2 =
             match debugValidateNode Root with
             | NotValid err -> Some err
             | Valid _ -> None
+
+        member this.EnumerateFrom key = findSeqInNode key Root
 
         member this.Insert key value =
             match insertInNode key value Root with
@@ -414,6 +440,9 @@ module IbpTree2 =
 
     let debugValidate<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > (tree: Tree<'TKey, 'TValue>) =
         tree.DebugValidate ()
+
+    let enumerateFrom<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > key (tree: Tree<'TKey, 'TValue>) =
+        tree.EnumerateFrom key
 
     let insert<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > key value (tree: Tree<'TKey, 'TValue>) =
         tree.Insert key value

@@ -5,7 +5,7 @@ open FsUnit.Xunit
 open KaiEkkrin.FsData.Data
 open Xunit.Abstractions
 
-let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
+let buildTreeWithDebug (output: ITestOutputHelper) (b, keys) =
     let emptyTree = IbpTree2.emptyB<int, string>(b)
     let tree =
         keys
@@ -25,7 +25,12 @@ let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
         ) emptyTree
 
     output.WriteLine <| tree.ToString ()
+    tree
 
+let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
+    let tree = buildTreeWithDebug output (b, keys)
+
+    // Check each distinct key is present
     let distinctKeys = keys |> Array.distinct
     for key in distinctKeys do
         let found = IbpTree2.tryFind key tree
@@ -36,3 +41,18 @@ let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
 
         let notFound2 = IbpTree2.tryFind (key - 1) tree
         notFound2 |> should equal None
+
+    // Check that the forward enumeration of the whole tree equals the
+    // ordered list of distinct key-value pairs
+    let orderedKeys = distinctKeys |> Array.sort
+    let orderedValues = orderedKeys |> Array.map (sprintf "%d")
+    let minKey = distinctKeys |> Array.min
+    let enumeration = IbpTree2.enumerateFrom minKey tree |> Array.ofSeq
+
+    let enumeratedKeys = enumeration |> Array.map (fun kv -> kv.Key)
+    enumeratedKeys |> should equalSeq orderedKeys
+
+    let enumeratedValues = enumeration |> Array.map (fun kv -> kv.Value)
+    enumeratedValues |> should equalSeq orderedValues
+
+

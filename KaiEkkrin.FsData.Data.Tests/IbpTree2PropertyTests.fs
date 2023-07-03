@@ -59,7 +59,7 @@ type PropertyTests(output: ITestOutputHelper) =
             // so we can always look for a missing key in between valid keys
             // TODO Also test with duplicates!
             let! keys =
-                Gen.choose (1, b * 4)
+                Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
 
             let! shuffledKeys = Gen.shuffle keys
@@ -77,7 +77,7 @@ type PropertyTests(output: ITestOutputHelper) =
             // so we can always look for a missing key in between valid keys
             // TODO Also test with duplicates!
             let! keys =
-                Gen.choose (1, b * 4)
+                Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
 
             return (b, keys)
@@ -94,7 +94,7 @@ type PropertyTests(output: ITestOutputHelper) =
             // so we can always look for a missing key in between valid keys
             // TODO Also test with duplicates!
             let! keys =
-                Gen.choose (1, b * 4)
+                Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
 
             return (b, keys |> Array.rev)
@@ -111,7 +111,7 @@ type PropertyTests(output: ITestOutputHelper) =
             // so we can always look for a missing key in between valid keys
             // TODO Also test with duplicates!
             let! keys =
-                Gen.choose (1, b * 4)
+                Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
 
             let! shuffledKeys = Gen.shuffle keys
@@ -124,3 +124,41 @@ type PropertyTests(output: ITestOutputHelper) =
         }
 
         Prop.forAll arb <| IbpTree2TestCommon.testInsertAndFind output
+
+    [<Property>]
+    let ``Forward enumeration works from any point``() =
+        let arb = Arb.fromGen <| gen {
+            let! b = genOrder
+
+            // As above.
+            let! keys =
+                Gen.choose (1, b * 7)
+                |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
+
+            // Enumerate from any number within the bounds of the sequence, or
+            // one outside of it.
+            let maxKey = Array.max keys
+            let! enumStart = Gen.choose (-1, maxKey + 1)
+
+            let! shuffledKeys = Gen.shuffle keys
+            return (b, shuffledKeys, enumStart)
+        }
+
+        Prop.forAll arb <| fun (b, keys, enumStart) ->
+            let tree = IbpTree2TestCommon.buildTreeWithDebug output (b, keys)
+
+            let orderedKeys =
+                keys
+                |> Array.filter (fun k -> k >= enumStart)
+                |> Array.distinct
+                |> Array.sort
+
+            let orderedValues = orderedKeys |> Array.map (sprintf "%d")
+            let enumeration = IbpTree2.enumerateFrom enumStart tree |> Array.ofSeq
+
+            let enumeratedKeys = enumeration |> Array.map (fun kv -> kv.Key)
+            enumeratedKeys |> should equalSeq orderedKeys
+
+            let enumeratedValues = enumeration |> Array.map (fun kv -> kv.Value)
+            enumeratedValues |> should equalSeq orderedValues
+
