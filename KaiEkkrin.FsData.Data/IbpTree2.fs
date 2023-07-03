@@ -25,7 +25,7 @@ module IbpTree2 =
     // - X < K1 for all keys X in P1
     // - Kn-1 <= X < Kn for all keys X in Pn
     // - Kc-1 < X for all keys X in Pc
-    type IntNode<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > = struct
+    type IntNode<'TKey, 'TValue> = struct
         // List of (P1, Kn), (P2, K2), ..., (Pc-1, Kc-1) as above
         // Key = Kx, Value = Px of course.
         val Nodes: KeyValuePair<'TKey, Node<'TKey, 'TValue> > []
@@ -45,7 +45,7 @@ module IbpTree2 =
     // E.g. when B=3, a leaf node may contain 1 or 2 values.
     // In addition, each leaf node logically carries an optional pointer to the next one --
     // we won't include that in the structure but instead pass it to functions that need it.
-    and LeafNode<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > = struct
+    and LeafNode<'TKey, 'TValue> = struct
         val Values: KeyValuePair<'TKey, 'TValue> []
         new values = { Values = values }
         end
@@ -55,7 +55,7 @@ module IbpTree2 =
 
     // TODO these can be made [<Struct>] -- experiment?
     // See https://www.bartoszsypytkowski.com/writing-high-performance-f-code/
-    and Node<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > =
+    and Node<'TKey, 'TValue> =
         | Int of IntNode<'TKey, 'TValue>
         | Leaf of LeafNode<'TKey, 'TValue>
 
@@ -63,7 +63,7 @@ module IbpTree2 =
     // or a split of it, (N1, K1, N2) where K is such that
     // Key(X) < K1 for all X in N1
     // K1 <= Key(X) for all X in N2
-    type NodeUpdate<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > =
+    type NodeUpdate<'TKey, 'TValue> =
         | Single of Node<'TKey, 'TValue>
         | Split of Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>
 
@@ -72,7 +72,7 @@ module IbpTree2 =
         | NotValid of string
         | Valid of 'TKey []
 
-    type Tree<'TKey, 'TValue when 'TKey :> IComparable<'TKey> >(
+    type Tree<'TKey, 'TValue>(
         B: int, Comparer: IComparer<'TKey>, Root: Node<'TKey, 'TValue>
     ) =
         // ## Helpers ##
@@ -115,11 +115,12 @@ module IbpTree2 =
 
         // ## Debug: formatted print ##
 
-        let rec debugPrintLeaf prefix (sb: StringBuilder) (node: LeafNode<'TKey, 'TValue>) =
-            for kv in node.Values do
-                sb.AppendLine $"{prefix} {kv.Key} = {kv.Value}" |> ignore
+        let rec debugPrintNode prefix (sb: StringBuilder) node =
+            match node with
+            | Int intNode -> debugPrintInt prefix sb intNode
+            | Leaf leafNode -> debugPrintLeaf prefix sb leafNode
 
-        and debugPrintInt prefix (sb: StringBuilder) (node: IntNode<'TKey, 'TValue>) =
+        and debugPrintInt prefix sb node =
             let keyStrings = node.Nodes |> Array.map (fun kv -> $"{kv.Key}")
             let keyStringMaxLength = keyStrings |> Seq.map (fun s -> s.Length) |> Seq.max
             let prefixExtension = Array.create keyStringMaxLength ' ' |> fun cs -> new String(cs)
@@ -128,27 +129,19 @@ module IbpTree2 =
                 sb.AppendLine $"{prefix} < {kv.Key}" |> ignore
 
             debugPrintNode $"{prefix}...{prefixExtension}" sb node.Last
-    
-        and debugPrintNode prefix (sb: StringBuilder) node =
-            match node with
-            | Int intNode -> debugPrintInt prefix sb intNode
-            | Leaf leafNode -> debugPrintLeaf prefix sb leafNode
 
+        and debugPrintLeaf prefix sb node =
+            for kv in node.Values do
+                sb.AppendLine $"{prefix} {kv.Key} = {kv.Value}" |> ignore
+    
         // ## Debug: validate tree ##
 
-        let rec debugValidateLeaf (node: LeafNode<'TKey, 'TValue>) =
-            let keys = node.Values |> Array.map (fun kv -> kv.Key)
-            let keySet = SortedSet<'TKey>(Comparer)
+        let rec debugValidateNode node =
+            match node with
+            | Int intNode -> debugValidateInt intNode
+            | Leaf leafNode -> debugValidateLeaf leafNode
 
-            // Keys must be unique and ordered
-            let isValid =
-                keys
-                |> Seq.zip keySet
-                |> Seq.fold (fun ok (a, b) -> ok && Comparer.Compare(a, b) = 0) true
-
-            if isValid then Valid keys else NotValid <| sprintf "Invalid leaf: %A" node
-
-        and debugValidateInt (node: IntNode<'TKey, 'TValue>) =
+        and debugValidateInt node =
             let keys = node.Nodes |> Array.map (fun kv -> kv.Key)
             let keySet = SortedSet<'TKey>(Comparer)
 
@@ -213,10 +206,17 @@ module IbpTree2 =
 
                 ) (Valid keys)
 
-        and debugValidateNode node =
-            match node with
-            | Int intNode -> debugValidateInt intNode
-            | Leaf leafNode -> debugValidateLeaf leafNode
+        and debugValidateLeaf node =
+            let keys = node.Values |> Array.map (fun kv -> kv.Key)
+            let keySet = SortedSet<'TKey>(Comparer)
+
+            // Keys must be unique and ordered
+            let isValid =
+                keys
+                |> Seq.zip keySet
+                |> Seq.fold (fun ok (a, b) -> ok && Comparer.Compare(a, b) = 0) true
+
+            if isValid then Valid keys else NotValid <| sprintf "Invalid leaf: %A" node
 
         // ## Debug: other things ##
 
@@ -227,22 +227,22 @@ module IbpTree2 =
 
         // ## Search ##
 
-        let rec findInLeaf key (node: LeafNode<'TKey, 'TValue>) =
-            match findIndexInLeaf key node with
-            | (index, true) -> Some node.Values[index].Value
-            | _ -> None
+        let rec findInNode key node =
+            match node with
+            | Int intNode -> findInInt key intNode
+            | Leaf leafNode -> findInLeaf key leafNode
 
-        and findInInt key (node: IntNode<'TKey, 'TValue>) =
+        and findInInt key node =
             let index = findIndexInInt key node
             let searchNode =
                 if index = node.Nodes.Length then node.Last else node.Nodes[index].Value
 
             findInNode key searchNode
 
-        and findInNode key node =
-            match node with
-            | Int intNode -> findInInt key intNode
-            | Leaf leafNode -> findInLeaf key leafNode
+        and findInLeaf key node =
+            match findIndexInLeaf key node with
+            | (index, true) -> Some node.Values[index].Value
+            | _ -> None
 
         // ## Search (forward sequence) ##
 
@@ -269,7 +269,12 @@ module IbpTree2 =
 
         // ## Insert ##
 
-        let rec insertInLeaf key value (node: LeafNode<'TKey, 'TValue>) =
+        let rec insertInNode key value node =
+            match node with
+            | Int intNode -> insertInInt key value intNode
+            | Leaf leafNode -> insertInLeaf key value leafNode
+
+        and insertInLeaf key value node =
             let (index, isExactMatch) = findIndexInLeaf key node
             if isExactMatch then
                 // This is a straightforward value replacement and never needs splitting
@@ -302,7 +307,7 @@ module IbpTree2 =
                 
                     Split (newValues1 |> LeafNode |> Leaf, newValues2[0].Key, newValues2 |> LeafNode |> Leaf)
 
-        and insertInInt key value (node: IntNode<'TKey, 'TValue>) =
+        and insertInInt key value node =
             // Do the recursive insert
             let index = findIndexInInt key node
             let update =
@@ -387,11 +392,6 @@ module IbpTree2 =
 
                     Split (head |> Int, tailKey, tail |> Int)
 
-        and insertInNode key value node =
-            match node with
-            | Int intNode -> insertInInt key value intNode
-            | Leaf leafNode -> insertInLeaf key value leafNode
-
         // ## Public methods ##
 
         member this.DebugValidate () =
@@ -424,28 +424,28 @@ module IbpTree2 =
 
     let bValueFor<'T> = Math.Max (3, 64_000 / sizeof<'T>)
 
-    let create<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > cmp =
+    let create<'TKey, 'TValue> cmp =
         new Tree<'TKey, 'TValue>(bValueFor<'TKey>, cmp, LeafNode [||] |> Leaf)
 
-    let createB<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > (b, cmp) =
+    let createB<'TKey, 'TValue> (b, cmp) =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
         new Tree<'TKey, 'TValue>(b, cmp, LeafNode [||] |> Leaf)
 
-    let empty<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > =
+    let empty<'TKey, 'TValue> =
         new Tree<'TKey, 'TValue>(bValueFor<'TKey>, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
 
-    let emptyB<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > b =
+    let emptyB<'TKey, 'TValue> b =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
         new Tree<'TKey, 'TValue>(b, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
 
-    let debugValidate<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > (tree: Tree<'TKey, 'TValue>) =
+    let debugValidate<'TKey, 'TValue> (tree: Tree<'TKey, 'TValue>) =
         tree.DebugValidate ()
 
-    let enumerateFrom<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > key (tree: Tree<'TKey, 'TValue>) =
+    let enumerateFrom<'TKey, 'TValue> key (tree: Tree<'TKey, 'TValue>) =
         tree.EnumerateFrom key
 
-    let insert<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > key value (tree: Tree<'TKey, 'TValue>) =
+    let insert<'TKey, 'TValue> key value (tree: Tree<'TKey, 'TValue>) =
         tree.Insert key value
 
-    let tryFind<'TKey, 'TValue when 'TKey :> IComparable<'TKey> > key (tree: Tree<'TKey, 'TValue>) =
+    let tryFind<'TKey, 'TValue> key (tree: Tree<'TKey, 'TValue>) =
         tree.TryFind key
