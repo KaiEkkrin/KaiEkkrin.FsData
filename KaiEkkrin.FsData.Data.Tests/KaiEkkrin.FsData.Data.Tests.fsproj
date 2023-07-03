@@ -9,7 +9,6 @@
     <Compile Include="IbpTree2TestCommon.fs" />
     <Compile Include="IbpTree2PropertyTests.fs" />
     <Compile Include="IbpTree2Tests.fs" />
-    <Compile Include="IbpTreePropertyTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

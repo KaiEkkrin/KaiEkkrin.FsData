@@ -6,6 +6,5 @@
   <ItemGroup>
     <Compile Include="ArrayUtil.fs" />
     <Compile Include="IbpTree2.fs" />
-    <Compile Include="IbpTree.fs" />
   </ItemGroup>
 </Project>
