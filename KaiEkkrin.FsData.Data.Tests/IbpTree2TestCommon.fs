@@ -26,7 +26,8 @@ let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
 
     output.WriteLine <| tree.ToString ()
 
-    for key in keys do
+    let distinctKeys = keys |> Array.distinct
+    for key in distinctKeys do
         let found = IbpTree2.tryFind key tree
         found |> should equal (Some (sprintf "%d" key))
 

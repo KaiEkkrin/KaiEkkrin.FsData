@@ -12,9 +12,7 @@ type PropertyTests(output: ITestOutputHelper) =
     // Generates a valid order for the tree (the B-value.)
     // Whilst all values >= 3 are valid, not all are equally interesting and I want to bias the test set
     // towards small and particular numbers. If these work, probably the rest should work...
-    // TODO make bigger once things look like they're working
-    //let genOrder = Gen.elements [3; 4; 5; 6; 7; 8; 13; 21; 34; 64; 99]
-    let genOrder = Gen.elements [3; 4; 5]
+    let genOrder = Gen.elements [3; 4; 5; 6; 7; 8; 13; 21; 34; 64; 99]
 
     [<Property>]
     let ``An empty tree contains nothing``() =
@@ -61,11 +59,68 @@ type PropertyTests(output: ITestOutputHelper) =
             // so we can always look for a missing key in between valid keys
             // TODO Also test with duplicates!
             let! keys =
-                Gen.choose (1, b * 4) // TODO make bigger once things look like they're working
+                Gen.choose (1, b * 4)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
 
             let! shuffledKeys = Gen.shuffle keys
             return (b, shuffledKeys)
+        }
+
+        Prop.forAll arb <| IbpTree2TestCommon.testInsertAndFind output
+
+    [<Property>]
+    let ``Values inserted in order into a tree can be retrieved``() =
+        let arb = Arb.fromGen <| gen {
+            let! b = genOrder
+
+            // Generate some keys to insert -- these will always be multiples of 3
+            // so we can always look for a missing key in between valid keys
+            // TODO Also test with duplicates!
+            let! keys =
+                Gen.choose (1, b * 4)
+                |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
+
+            return (b, keys)
+        }
+
+        Prop.forAll arb <| IbpTree2TestCommon.testInsertAndFind output
+
+    [<Property>]
+    let ``Values inserted in reverse order into a tree can be retrieved``() =
+        let arb = Arb.fromGen <| gen {
+            let! b = genOrder
+
+            // Generate some keys to insert -- these will always be multiples of 3
+            // so we can always look for a missing key in between valid keys
+            // TODO Also test with duplicates!
+            let! keys =
+                Gen.choose (1, b * 4)
+                |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
+
+            return (b, keys |> Array.rev)
+        }
+
+        Prop.forAll arb <| IbpTree2TestCommon.testInsertAndFind output
+
+    [<Property>]
+    let ``Values including duplicates inserted randomly into a tree can be retrieved``() =
+        let arb = Arb.fromGen <| gen {
+            let! b = genOrder
+
+            // Generate some keys to insert -- these will always be multiples of 3
+            // so we can always look for a missing key in between valid keys
+            // TODO Also test with duplicates!
+            let! keys =
+                Gen.choose (1, b * 4)
+                |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
+
+            let! shuffledKeys = Gen.shuffle keys
+            let! duplicateKeys =
+                Array.concat [|keys; keys; keys|]
+                |> Gen.shuffle
+
+            let withDuplicates = Array.concat [|shuffledKeys; duplicateKeys[..(b * 4)]|]
+            return (b, withDuplicates)
         }
 
         Prop.forAll arb <| IbpTree2TestCommon.testInsertAndFind output
