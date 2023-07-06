@@ -55,4 +55,12 @@ let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
     let enumeratedValues = enumeration |> Array.map (fun kv -> kv.Value)
     enumeratedValues |> should equalSeq orderedValues
 
+    // The implementation of IEnumerable<> should also work like that
+    let e2 = tree |> Array.ofSeq
+
+    let e2Keys = e2 |> Array.map (fun kv -> kv.Key)
+    e2Keys |> should equalSeq orderedKeys
+
+    let e2Values = e2 |> Array.map (fun kv -> kv.Value)
+    e2Values |> should equalSeq orderedValues
 

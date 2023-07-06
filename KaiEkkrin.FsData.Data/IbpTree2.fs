@@ -72,6 +72,13 @@ module IbpTree2 =
         | NotValid of string
         | Valid of 'TKey []
 
+    let childrenOfInt (node: IntNode<'TKey, 'TValue>) = seq {
+        for kv in node.Nodes do
+            yield kv.Value
+
+        yield node.Last
+    }
+
     type Tree<'TKey, 'TValue>(
         B: int, Comparer: IComparer<'TKey>, Root: Node<'TKey, 'TValue>
     ) =
@@ -112,6 +119,55 @@ module IbpTree2 =
                 else doFind (i + 1)
 
             doFind 0
+
+        // ## Debug: check widths ##
+
+        let rec debugCheckWidthsNode maybeMinWidth node =
+            match node with
+            | Int intNode -> debugCheckWidthsInt maybeMinWidth intNode
+            | Leaf leafNode -> debugCheckWidthsLeaf maybeMinWidth leafNode
+
+        and debugCheckWidthsInt maybeMinWidth node =
+            let minWidth = match maybeMinWidth with | Some a -> a | None -> lengthOfSplitIntNode
+            if node.Nodes.Length < minWidth then Some <| sprintf "Node %A less than width %d" node minWidth
+            elif node.Nodes.Length >= B then Some <| sprintf "Node %A ge than width %d" node B
+            else
+                childrenOfInt node
+                |> Seq.fold (fun x n ->
+                    match x with
+                    | Some err -> Some err
+                    | None -> debugCheckWidthsNode None n) None
+
+        and debugCheckWidthsLeaf maybeMinWidth node =
+            let minWidth = match maybeMinWidth with | Some a -> a | None -> lengthOfSplitLeafNode
+            if node.Values.Length < minWidth then Some <| sprintf "Node %A less than width %d" node minWidth
+            elif node.Values.Length >= B then Some <| sprintf "Node %A ge than width %d" node B
+            else None
+
+        // ## Debug: count leaf nodes ##
+
+        let rec debugCountLeafNodes node =
+            match node with
+            | Int intNode -> debugCountLeafNodesInt intNode
+            | Leaf _ -> 1
+
+        and debugCountLeafNodesInt node = childrenOfInt node |> Seq.sumBy debugCountLeafNodes
+
+        // ## Debug: get depth ##
+
+        let rec debugGetDepthNode node =
+            match node with
+            | Int intNode -> debugGetDepthInt intNode
+            | Leaf _ -> 1
+
+        and debugGetDepthInt node =
+            let depths =
+                childrenOfInt node
+                |> Seq.map debugGetDepthNode
+                |> Set.ofSeq
+
+            if depths.Count > 1 then failwithf "At node %A, found differing depths: %A" node depths
+            depths |> Seq.head
 
         // ## Debug: formatted print ##
 
@@ -224,6 +280,15 @@ module IbpTree2 =
             match node with
             | Int intNode -> intNode.Nodes |> Array.map (fun kv -> kv.Key)
             | Leaf leafNode -> leafNode.Values |> Array.map (fun kv -> kv.Key)
+
+        // ## Enumerate all key-value pairs in order ##
+
+        let rec enumerateAll node =
+            match node with
+            | Int intNode -> enumerateAllInt intNode
+            | Leaf leafNode -> leafNode.Values |> Seq.ofArray
+
+        and enumerateAllInt node = childrenOfInt node |> Seq.collect enumerateAll
 
         // ## Search ##
 
@@ -395,9 +460,18 @@ module IbpTree2 =
         // ## Public methods ##
 
         member this.DebugValidate () =
-            match debugValidateNode Root with
-            | NotValid err -> Some err
-            | Valid _ -> None
+            // Count tree and check depth.
+            // See https://cs.stackexchange.com/questions/82015/maximum-depth-of-a-b-tree
+            let depth = debugGetDepthNode Root
+            let leafCount = debugCountLeafNodes Root
+            let maxDepth = 1 + (Math.Log (leafCount, (float B) / 2.0) |> Math.Ceiling |> int)
+            if depth > maxDepth then Some <| sprintf "Required max depth = %d, found %d" maxDepth depth
+            else
+                // Check other things
+                match (debugCheckWidthsNode (Some 0) Root, debugValidateNode Root) with
+                | (Some err, _) -> Some err
+                | (_, NotValid err) -> Some err
+                | _ -> None
 
         member this.EnumerateFrom key = findSeqInNode key Root
 
@@ -421,6 +495,14 @@ module IbpTree2 =
             debugPrintNode "" sb Root
             sb.AppendLine ")" |> ignore
             sb.ToString ()
+
+        interface System.Collections.IEnumerable with
+            member this.GetEnumerator () =
+                (enumerateAll Root).GetEnumerator ()
+
+        interface IEnumerable<KeyValuePair<'TKey, 'TValue> > with
+            member this.GetEnumerator () =
+                (enumerateAll Root).GetEnumerator ()
 
     let bValueFor<'T> = Math.Max (3, 64_000 / sizeof<'T>)
 
