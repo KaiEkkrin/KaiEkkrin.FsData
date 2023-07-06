@@ -10,9 +10,6 @@ open System.Text
 // - https://www.programiz.com/dsa/b-plus-tree
 // This defines a B+ tree of order B:
 // (What's the lowest valid value of B, anyway?)
-// TODO try optimising the Array.init into Array.zeroCreate / Array.Copy
-// Can interop with Array.Copy by calling with named arguments, as described here:
-// See https://fsharpforfunandprofit.com/posts/completeness-seamless-dotnet-interop/
 module IbpTree2 =
 
     // ## Node types ##
