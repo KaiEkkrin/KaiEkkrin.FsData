@@ -4,6 +4,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Common.fs" />
     <Compile Include="ArrayUtil.fs" />
     <Compile Include="IbpTree2.fs" />
   </ItemGroup>

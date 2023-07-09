@@ -5,6 +5,7 @@
     <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="TestCommon.fs" />
     <Compile Include="ArrayUtilTests.fs" />
     <Compile Include="IbpTree2TestCommon.fs" />
     <Compile Include="IbpTree2PropertyTests.fs" />

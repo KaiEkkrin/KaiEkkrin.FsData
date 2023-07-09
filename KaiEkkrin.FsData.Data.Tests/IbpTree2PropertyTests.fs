@@ -9,15 +9,10 @@ open Xunit.Abstractions
 // TODO test for balancing (very important) and for the tree being validly organised
 type PropertyTests(output: ITestOutputHelper) =
 
-    // Generates a valid order for the tree (the B-value.)
-    // Whilst all values >= 3 are valid, not all are equally interesting and I want to bias the test set
-    // towards small and particular numbers. If these work, probably the rest should work...
-    let genOrder = Gen.elements [3; 4; 5; 6; 7; 8; 13; 21; 34; 64; 99]
-
     [<Property>]
     let ``An empty tree contains nothing``() =
         let arb = Arb.fromGen <| gen {
-            let! b = genOrder
+            let! b = TestCommon.genBValue
             let! key = Gen.choose (0, 1000)
             return (b, key)
         }
@@ -30,7 +25,7 @@ type PropertyTests(output: ITestOutputHelper) =
     [<Property>]
     let ``A one-item tree contains one item``() =
         let arb = Arb.fromGen <| gen {
-            let! b = genOrder
+            let! b = TestCommon.genBValue
             let! key = Gen.choose (0, 1000)
             let! nonMatchingKey =
                 Gen.choose (0, 1000)
@@ -53,7 +48,7 @@ type PropertyTests(output: ITestOutputHelper) =
     [<Property>]
     let ``Values inserted randomly into a tree can be retrieved``() =
         let arb = Arb.fromGen <| gen {
-            let! b = genOrder
+            let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
@@ -71,7 +66,7 @@ type PropertyTests(output: ITestOutputHelper) =
     [<Property>]
     let ``Values inserted in order into a tree can be retrieved``() =
         let arb = Arb.fromGen <| gen {
-            let! b = genOrder
+            let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
@@ -88,7 +83,7 @@ type PropertyTests(output: ITestOutputHelper) =
     [<Property>]
     let ``Values inserted in reverse order into a tree can be retrieved``() =
         let arb = Arb.fromGen <| gen {
-            let! b = genOrder
+            let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
@@ -105,7 +100,7 @@ type PropertyTests(output: ITestOutputHelper) =
     [<Property>]
     let ``Values including duplicates inserted randomly into a tree can be retrieved``() =
         let arb = Arb.fromGen <| gen {
-            let! b = genOrder
+            let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
@@ -128,7 +123,7 @@ type PropertyTests(output: ITestOutputHelper) =
     [<Property>]
     let ``Forward enumeration works from any point``() =
         let arb = Arb.fromGen <| gen {
-            let! b = genOrder
+            let! b = TestCommon.genBValue
 
             // As above.
             let! keys =

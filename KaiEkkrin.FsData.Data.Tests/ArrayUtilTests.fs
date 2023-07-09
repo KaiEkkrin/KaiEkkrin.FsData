@@ -1,5 +1,7 @@
 module ArrayUtilTests
 
+open System
+open System.Collections.Generic
 open Xunit
 open Xunit.Abstractions
 open FsCheck
@@ -237,3 +239,102 @@ type Tests(output: ITestOutputHelper) =
             Assert.Equal (sprintf "%d" (sourceLength - 1), destinationArray[destinationArray.Length - 1])
             destinationArray |> Seq.skip 1 |> Seq.take spliceLength |> Seq.iteri (fun i v ->
                 Assert.Equal (sprintf "X%d" i, v))
+
+    // The splitIntoChunks function may not always be able to give sensible answers, but I
+    // only need it to be correct for minChunkSize..maxChunkSize that could be
+    // used within the tree:
+    let genChunkSizeRange = gen {
+        let! b = TestCommon.genBValue
+        let minChunkSize = Math.Min (IbpTree2.getLengthOfSplitIntNode b, IbpTree2.getLengthOfSplitLeafNode b)
+        let maxChunkSize = b - 1
+        return (minChunkSize, maxChunkSize)
+    }
+
+    [<Property>]
+    let ``SplitIntoChunks always returns a short array as a single chunk``() =
+        let arb = Arb.fromGen <| gen {
+            let! (minChunkSize, maxChunkSize) = genChunkSizeRange
+            let! arrayLength = Gen.choose (0, maxChunkSize)
+            let! array = Gen.arrayOfLength arrayLength (Gen.choose (0, 9_999))
+            return (minChunkSize, maxChunkSize, array)
+        }
+
+        Prop.forAll arb <| fun (minChunkSize, maxChunkSize, array) ->
+            let chunks = ArrayUtil.splitIntoChunks minChunkSize maxChunkSize array
+
+            chunks.Length |> should equal 1
+            chunks[0] |> should equalSeq array
+
+    [<Property>]
+    let ``SplitIntoChunks always splits long arrays into valid chunks``() =
+        let arb = Arb.fromGen <| gen {
+            let! (minChunkSize, maxChunkSize) = genChunkSizeRange
+            let! arrayLength = Gen.choose (maxChunkSize + 1, maxChunkSize * 100)
+            let! array = Gen.arrayOfLength arrayLength (Gen.choose (0, 9_999))
+            return (minChunkSize, maxChunkSize, array)
+        }
+
+        Prop.forAll arb <| fun (minChunkSize, maxChunkSize, array) ->
+            let chunks = ArrayUtil.splitIntoChunks minChunkSize maxChunkSize array
+
+            // Every chunk must be between min and max chunk sizes (inclusive)
+            for chunk in chunks do
+                chunk.Length |> should greaterThanOrEqualTo minChunkSize 
+                chunk.Length |> should lessThanOrEqualTo maxChunkSize
+
+            // The collected array should be the same as the original
+            let collected = chunks |> Array.collect id
+            collected |> should equalSeq array
+
+    let genDistinctKeyValues = gen {
+        let! arrayLength = Gen.choose (0, 1000)
+        let keysInOrder = Array.init arrayLength id
+        let! keys = Gen.shuffle keysInOrder
+        return keys |> Array.map (fun i -> KeyValuePair(i, sprintf "%d" i))
+    }
+
+    [<Property>]
+    let ``SortedAndDistinct always returns a sorted array``() =
+        let arb = Arb.fromGen <| genDistinctKeyValues
+        Prop.forAll arb <| fun array ->
+            let expected = array |> Array.sortBy (fun kv -> kv.Key)
+            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default array
+            actual |> should equalSeq expected
+
+    [<Property>]
+    let ``SortedAndDistinct always excludes older items with concatenated arrays``() =
+        // In this one, I'll generate three arrays of the same sequence of shuffled
+        // keys (with different values) and expect only the last series of values to
+        // come out.
+        let arb = Arb.fromGen <| genDistinctKeyValues
+        Prop.forAll arb <| fun array ->
+            let partA = array |> Array.map (fun kv -> KeyValuePair(kv.Key, sprintf "A%s" kv.Value))
+            let partB = array |> Array.map (fun kv -> KeyValuePair(kv.Key, sprintf "B%s" kv.Value))
+            let partC = array |> Array.map (fun kv -> KeyValuePair(kv.Key, sprintf "C%s" kv.Value))
+            let allParts = Array.concat [|partA; partB; partC|]
+
+            let expected = partC |> Array.sortBy (fun kv -> kv.Key)
+            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default allParts
+            actual |> should equalSeq expected
+
+    [<Property>]
+    let ``SortedAndDistinct always excludes older items with interleaved arrays``() =
+        // In this one, I'll duplicate each key three times (with different values) and
+        // expect only the final keys to come out.
+        let arb = Arb.fromGen <| genDistinctKeyValues
+        Prop.forAll arb <| fun array ->
+            let withDuplicates = [|
+                for kv in array do
+                    yield KeyValuePair (kv.Key, sprintf "A%s" kv.Value)
+                    yield KeyValuePair (kv.Key, sprintf "B%s" kv.Value)
+                    yield KeyValuePair (kv.Key, sprintf "C%s" kv.Value)
+            |]
+
+            let expected =
+                array
+                |> Array.map (fun kv -> KeyValuePair(kv.Key, sprintf "C%s" kv.Value))
+                |> Array.sortBy (fun kv -> kv.Key)
+
+            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default withDuplicates
+            actual |> should equalSeq expected
+

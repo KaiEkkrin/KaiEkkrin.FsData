@@ -10,6 +10,17 @@ open System.Text
 // - https://www.programiz.com/dsa/b-plus-tree
 // This defines a B+ tree of order B:
 // (What's the lowest valid value of B, anyway?)
+// TODO : After the basic thing is working -- for better performance whilst retaining the flexibility
+// of immutability, try making a similar Freezable tree (or extending this one to be Freezable.)
+// This would:
+// - support mutable updates (until Frozen)
+// - after being Frozen, become immutable
+// - an update to a Frozen tree would return a new tree, not Frozen, but sharing unchanged data with
+// the Frozen one
+// To avoid it needing lots of allocations anyway I think such a tree would need to always allocate
+// maximum size nodes. But, in the usage model I envisage (a "main line" tree that needs to be immutable,
+// with threads doing flurries of short-lived edits to it), this could be advantageous
+// This is also analogous to ImmutableDictionary<,>.Builder and I could even consider calling it such.
 module IbpTree2 =
 
     // ## Node types ##
@@ -50,19 +61,31 @@ module IbpTree2 =
         override this.ToString() =
             this.Values |> Array.map (fun kv -> sprintf "%A = %A" kv.Key kv.Value) |> sprintf "%A"
 
-    // TODO these can be made [<Struct>] -- experiment?
-    // See https://www.bartoszsypytkowski.com/writing-high-performance-f-code/
     and Node<'TKey, 'TValue> =
         | Int of IntNode<'TKey, 'TValue>
         | Leaf of LeafNode<'TKey, 'TValue>
+
+    // When doing a bulk create, I'll return a list of nodes associated with their minimum key:
+    type NodeCreation<'TKey, 'TValue> = struct
+        val MinKey: 'TKey
+        val Node: Node<'TKey, 'TValue>
+        new (minKey, node) = { MinKey = minKey; Node = node }
+        end
 
     // When doing an insert, I'll either return a single node (updated with the new value)
     // or a split of it, (N1, K1, N2) where K is such that
     // Key(X) < K1 for all X in N1
     // K1 <= Key(X) for all X in N2
-    type NodeUpdate<'TKey, 'TValue> =
+    // NodeInsertion can be made [<Struct>] -- experiment?
+    // See https://www.bartoszsypytkowski.com/writing-high-performance-f-code/
+    type NodeInsertion<'TKey, 'TValue> =
         | Single of Node<'TKey, 'TValue>
         | Split of Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>
+
+    // The result of doing a delete. (TODO)
+    type NodeDeletion<'TKey, 'TValue> =
+        | NotPresent // key not found in leaf; nothing to delete
+        | Kept of Node<'TKey, 'TValue> // the node, updated but not merged
 
     // The result of validating a node.
     type NodeValidationResult<'TKey, 'TValue> =
@@ -76,17 +99,51 @@ module IbpTree2 =
         yield node.Last
     }
 
+    let getLengthOfSplitIntNode b = (Common.divCeil b 2) - 1
+    let getLengthOfSplitLeafNode b = Common.divCeil (b - 1) 2
+
+    // ## Create from sorted array ##
+
+    let creationsToIntNode<'TKey, 'TValue> (creations: NodeCreation<'TKey, 'TValue> []) =
+        let nodes =
+            creations[..(creations.Length - 2)]
+            |> Array.map (fun x -> KeyValuePair(x.MinKey, x.Node))
+
+        IntNode (nodes, creations[creations.Length - 1].Node) |> Int
+
+    let createSubtree<'TKey, 'TValue> b (array: KeyValuePair<'TKey, 'TValue> []) =
+
+        // Create the leaf nodes
+        let lengthOfSplitLeafNode = getLengthOfSplitLeafNode b
+        let leafNodes =
+            ArrayUtil.splitIntoChunks lengthOfSplitLeafNode (b - 1) array
+            |> Array.map (fun c -> NodeCreation (c[0].Key, c |> LeafNode |> Leaf))
+
+        // Note in the internal nodes each chunk also includes the `last` node, and so must be at least
+        // one longer than `lengthOfSplitIntNode` (which is the minimum number of keys)
+        let minIntChunkSize = (getLengthOfSplitIntNode b) + 1
+
+        let rec createSubtreeRec (array: NodeCreation<'TKey, 'TValue> []) =
+            if array.Length < b then array
+            else
+                ArrayUtil.splitIntoChunks minIntChunkSize (b - 1) array
+                |> Array.map (fun c ->
+                    let intNode = creationsToIntNode c
+                    NodeCreation (c[0].MinKey, intNode)
+                )
+                |> createSubtreeRec
+
+        createSubtreeRec leafNodes
+
+    // ## The tree data type ##
+
     type Tree<'TKey, 'TValue>(
         B: int, Comparer: IComparer<'TKey>, Root: Node<'TKey, 'TValue>
     ) =
         // ## Helpers ##
 
-        let divCeil (a: int) b =
-            let (div, rem) = Math.DivRem(a, b)
-            if rem = 0 then div else div + 1
-
-        let lengthOfSplitIntNode = (divCeil B 2) - 1
-        let lengthOfSplitLeafNode = divCeil (B - 1) 2
+        let lengthOfSplitIntNode = getLengthOfSplitIntNode B
+        let lengthOfSplitLeafNode = getLengthOfSplitLeafNode B
 
         let findIndexInLeaf key (node: LeafNode<'TKey, 'TValue>) =
             // The node is sorted in ascending order of keys.
@@ -116,6 +173,15 @@ module IbpTree2 =
                 else doFind (i + 1)
 
             doFind 0
+
+        // ## Enumerate all key-value pairs in order ##
+
+        let rec enumerateAll node =
+            match node with
+            | Int intNode -> enumerateAllInt intNode
+            | Leaf leafNode -> leafNode.Values |> Seq.ofArray
+
+        and enumerateAllInt node = childrenOfInt node |> Seq.collect enumerateAll
 
         // ## Debug: check widths ##
 
@@ -150,7 +216,36 @@ module IbpTree2 =
 
         and debugCountLeafNodesInt node = childrenOfInt node |> Seq.sumBy debugCountLeafNodes
 
-        // ## Debug: get depth ##
+        // ## Debug: check internal keys ##
+
+        let rec debugGetIntKeysNode node =
+            match node with
+            | Int intNode -> debugGetIntKeysInt intNode
+            | Leaf _ -> Seq.empty
+
+        and debugGetIntKeysInt node = seq {
+            for kv in node.Nodes do
+                yield kv.Key
+                yield! kv.Value |> debugGetIntKeysNode
+        }
+
+        let debugCheckIntKeys () =
+            // All the internal node keys should be keys in the actual data
+            let excessIntKeys = SortedSet<'TKey>(Comparer)
+            for key in debugGetIntKeysNode Root do
+                excessIntKeys.Add key |> ignore
+
+            for kv in enumerateAll Root do
+                excessIntKeys.Remove kv.Key |> ignore
+
+            if excessIntKeys.Count > 0 then
+                let excessArray = Array.zeroCreate (excessIntKeys.Count)
+                excessIntKeys.CopyTo excessArray
+                Some <| sprintf "Internal keys not in key set: %A" excessArray
+
+            else None
+
+        // ## Debug: check depth ##
 
         let rec debugGetDepthNode node =
             match node with
@@ -165,6 +260,14 @@ module IbpTree2 =
 
             if depths.Count > 1 then failwithf "At node %A, found differing depths: %A" node depths
             depths |> Seq.head
+
+        let debugCheckDepth () =
+            // Count tree and check depth.
+            // See https://cs.stackexchange.com/questions/82015/maximum-depth-of-a-b-tree
+            let depth = debugGetDepthNode Root
+            let leafCount = debugCountLeafNodes Root
+            let maxDepth = 1 + (Math.Log (leafCount, (float B) / 2.0) |> Math.Ceiling |> int)
+            if depth > maxDepth then Some <| sprintf "Required max depth = %d, found %d" maxDepth depth else None
 
         // ## Debug: formatted print ##
 
@@ -278,15 +381,6 @@ module IbpTree2 =
             | Int intNode -> intNode.Nodes |> Array.map (fun kv -> kv.Key)
             | Leaf leafNode -> leafNode.Values |> Array.map (fun kv -> kv.Key)
 
-        // ## Enumerate all key-value pairs in order ##
-
-        let rec enumerateAll node =
-            match node with
-            | Int intNode -> enumerateAllInt intNode
-            | Leaf leafNode -> leafNode.Values |> Seq.ofArray
-
-        and enumerateAllInt node = childrenOfInt node |> Seq.collect enumerateAll
-
         // ## Search ##
 
         let rec findInNode key node =
@@ -305,6 +399,13 @@ module IbpTree2 =
             match findIndexInLeaf key node with
             | (index, true) -> Some node.Values[index].Value
             | _ -> None
+
+        // ## First item (lowest) ##
+
+        let rec firstInNode node =
+            match node with
+            | Int intNode -> (Array.head intNode.Nodes).Value |> firstInNode
+            | Leaf leafNode -> Array.head leafNode.Values
 
         // ## Search (forward sequence) ##
 
@@ -362,10 +463,6 @@ module IbpTree2 =
                     // Note an F# array slice is *inclusive of the last index*
                     let newValues1 = newValues[..(lengthOfSplitLeafNode - 1)]
                     let newValues2 = newValues[lengthOfSplitLeafNode..]
-
-                    // TODO remove debug, checking this can't happen
-                    //if Comparer.Compare(newValues1[lengthOfSplitLeafNode - 1].Key, newValues2[0].Key) >= 0 then
-                    //    failwithf "Erroneously split leaf with ...%A, %A..." newValues1[lengthOfSplitLeafNode - 1].Key newValues2[0].Key
                 
                     Split (newValues1 |> LeafNode |> Leaf, newValues2[0].Key, newValues2 |> LeafNode |> Leaf)
 
@@ -416,20 +513,6 @@ module IbpTree2 =
 
                         IntNode (newNodes, node.Last)
 
-                // TODO remove debug. Validate the updated node.
-                //let newKeyArray = updated.Nodes |> Array.map (fun kv -> kv.Key)
-                //let newKeySet = SortedSet<'TKey>(Comparer)
-                //newKeyArray |> Array.iter (fun e -> newKeySet.Add e |> ignore)
-                //if newKeySet.Count <> newKeyArray.Length then
-                //    let sb = StringBuilder ()
-                //    sprintf "B=%d. On update key = %A (index = %d):" B key index |> sb.AppendLine |> ignore
-                //    sb.AppendLine "Original:" |> ignore
-                //    debugPrintInt "  " sb node
-                //    sb.AppendLine "Updated:" |> ignore
-                //    debugPrintInt "  " sb updated
-                //    sprintf "Bad updated node: new keys = %A" newKeyArray |> sb.AppendLine |> ignore
-                //    failwith <| sb.ToString()
-
                 if updated.Nodes.Length < B then
                     // No further splitting is required
                     updated |> Int |> Single
@@ -445,32 +528,95 @@ module IbpTree2 =
                     let tailKey = updated.Nodes[lengthOfSplitIntNode].Key
                     let tail = IntNode (newNodes2, updated.Last)
 
-                    // TODO remove debug. Validate this split.
-                    //let keysInTail = tail.Nodes |> Array.map (fun kv -> kv.Key)
-                    //keysInTail |> Array.iter (fun k ->
-                    //    if Comparer.Compare(k, tailKey) <= 0 then
-                    //        failwithf "B=%d, split at %d: Bad split of %A into head = %A, tailKey = %A, tail = %A" B lengthOfSplitIntNode updated head tailKey tail
-                    //)
-
                     Split (head |> Int, tailKey, tail |> Int)
+
+        // ## Delete ##
+
+        let rec deleteFromNode key node =
+            match node with
+            | Int intNode -> deleteFromInt key intNode
+            | Leaf leafNode -> deleteFromLeaf key leafNode
+
+        and deleteFromInt key node =
+            let index = findIndexInInt key node
+            let deletion =
+                if index = node.Nodes.Length then deleteFromNode key node.Last
+                else deleteFromNode key node.Nodes[index].Value
+
+            match deletion with
+            | NotPresent -> NotPresent
+            | Kept keptNode ->
+                if index = node.Nodes.Length then
+                    // We replaced the last node. The key may have changed
+                    if Comparer.Compare (node.Nodes[index - 1].Key, key) = 0
+                    then
+                        let newMin = (node.Nodes[index - 1].Value |> firstInNode).Key
+                        let newNodes =
+                            node.Nodes
+                            |> ArrayUtil.arraySplice1 (index - 1) 1 (KeyValuePair (newMin, node.Nodes[index - 1].Value))
+
+                        IntNode (newNodes, keptNode) |> Int |> Kept
+
+                    else
+                        IntNode (node.Nodes, keptNode) |> Int |> Kept
+
+                elif index > 0 && Comparer.Compare (node.Nodes[index - 1].Key, key) = 0 then
+                    // We replaced a node in the middle, and the key has changed
+                    let newMin = (node.Nodes[index - 1].Value |> firstInNode).Key
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySpliceX (index - 1) 2 [|
+                            KeyValuePair (newMin, node.Nodes[index - 1].Value)
+                            KeyValuePair (node.Nodes[index].Key, keptNode)
+                        |]
+
+                    IntNode (newNodes, node.Last) |> Int |> Kept
+
+                else
+                    // The key has not changed, only the node.
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySplice1 index 1 (KeyValuePair (node.Nodes[index].Key, keptNode))
+
+                    IntNode (newNodes, node.Last) |> Int |> Kept
+
+        and deleteFromLeaf key node =
+            match findIndexInLeaf key node with
+            | (_, false) -> NotPresent
+            | (i, true) when node.Values.Length > lengthOfSplitLeafNode ->
+                // We can delete this one key-value pair, and retain a node here
+                let withKeyDeleted = node.Values |> ArrayUtil.arraySpliceX i 1 [||]
+                withKeyDeleted |> LeafNode |> Leaf |> Kept
+
+            | (i, true) ->
+                // TODO don't do this but instead do a node merge of some kind
+                let withKeyDeleted = node.Values |> ArrayUtil.arraySpliceX i 1 [||]
+                withKeyDeleted |> LeafNode |> Leaf |> Kept
 
         // ## Public methods ##
 
         member this.DebugValidate () =
-            // Count tree and check depth.
-            // See https://cs.stackexchange.com/questions/82015/maximum-depth-of-a-b-tree
-            let depth = debugGetDepthNode Root
-            let leafCount = debugCountLeafNodes Root
-            let maxDepth = 1 + (Math.Log (leafCount, (float B) / 2.0) |> Math.Ceiling |> int)
-            if depth > maxDepth then Some <| sprintf "Required max depth = %d, found %d" maxDepth depth
-            else
-                // Check other things
-                match (debugCheckWidthsNode (Some 0) Root, debugValidateNode Root) with
-                | (Some err, _) -> Some err
-                | (_, NotValid err) -> Some err
-                | _ -> None
+            match debugCheckDepth () with
+            | Some err -> Some err
+            | None ->
+                match debugCheckIntKeys () with
+                | Some err -> Some err
+                | None ->
+                    match debugCheckWidthsNode (Some 0) Root with
+                    | Some err -> Some err
+                    | None ->
+                        match debugValidateNode Root with
+                        | NotValid err -> Some err
+                        | _ -> None
+
+        member this.Delete key =
+            match deleteFromNode key Root with
+            | NotPresent -> this
+            | Kept node -> Tree(B, Comparer, node)
 
         member this.EnumerateFrom key = findSeqInNode key Root
+
+        member this.First () = firstInNode Root
 
         member this.Insert key value =
             match insertInNode key value Root with
@@ -484,6 +630,23 @@ module IbpTree2 =
                 Tree(B, Comparer, newRoot)
 
         member this.TryFind key = findInNode key Root
+
+        // TODO test this. I think I'll need the logic inside for implementing delete properly;
+        // also it's useful in its own right
+        static member CreateFrom (b, cmp: IComparer<'TKey>, values: KeyValuePair<'TKey, 'TValue> seq) =
+            // Suspicion section: make sure that the values are sorted in order of the
+            // given comparer, and remove any with duplicate keys
+            let valuesArray = ArrayUtil.sortedAndDistinct cmp values
+
+            // Make a suitable root for the tree
+            let creations = createSubtree b valuesArray
+            let root =
+                match creations.Length with
+                | 0 -> LeafNode [||] |> Leaf
+                | 1 -> creations[0].Node
+                | _ -> creationsToIntNode creations
+
+            Tree (b, cmp, root)
 
         override this.ToString () =
             // Debug print
@@ -510,6 +673,13 @@ module IbpTree2 =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
         new Tree<'TKey, 'TValue>(b, cmp, LeafNode [||] |> Leaf)
 
+    let createFrom<'TKey, 'TValue> (cmp, values) =
+        Tree<'TKey, 'TValue>.CreateFrom (bValueFor<'TKey>, cmp, values)
+
+    let createFromB<'TKey, 'TValue> (b, cmp, values) =
+        if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
+        Tree<'TKey, 'TValue>.CreateFrom (b, cmp, values)
+
     let empty<'TKey, 'TValue> =
         new Tree<'TKey, 'TValue>(bValueFor<'TKey>, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
 
@@ -520,8 +690,12 @@ module IbpTree2 =
     let debugValidate<'TKey, 'TValue> (tree: Tree<'TKey, 'TValue>) =
         tree.DebugValidate ()
 
+    let delete<'TKey, 'TValue> key (tree: Tree<'TKey, 'TValue>) = tree.Delete key
+
     let enumerateFrom<'TKey, 'TValue> key (tree: Tree<'TKey, 'TValue>) =
         tree.EnumerateFrom key
+
+    let head<'TKey, 'TValue> (tree: Tree<'TKey, 'TValue>) = tree.First ()
 
     let insert<'TKey, 'TValue> key value (tree: Tree<'TKey, 'TValue>) =
         tree.Insert key value

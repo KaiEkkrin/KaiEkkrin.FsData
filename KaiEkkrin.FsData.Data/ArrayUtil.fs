@@ -1,6 +1,7 @@
 namespace KaiEkkrin.FsData.Data
 
 open System
+open System.Collections.Generic
 
 module ArrayUtil =
     // Deletes `deleteCount` items from the array at the index and
@@ -84,3 +85,65 @@ module ArrayUtil =
             )
 
         newArray
+
+    // Breaks an array into an array of chunks of size between `minChunkSize` and `maxChunkSize` inclusive,
+    // if it can.
+    let splitIntoChunks<'T> minChunkSize maxChunkSize (array: 'T []) =
+        if minChunkSize < 1 || minChunkSize > maxChunkSize then failwithf "Invalid chunk sizes: %d, %d" minChunkSize maxChunkSize
+
+        // Look for a chunk size such that we don't end up with an overly-small remainder that we can't fill.
+        // Emits the array of chunk sizes to use.
+        let rec lookForSplit sz =
+            if sz < minChunkSize then
+                failwithf "Can't find a valid split for a %d length array to chunk sizes %d, %d" array.Length minChunkSize maxChunkSize
+            else
+                let (fullChunks, leftover) = Math.DivRem (array.Length, sz)
+                if leftover = 0 then List.init fullChunks (fun _ -> sz)
+                else
+                    let chunkSizes = List.init (fullChunks + 1) (fun i -> if i = 0 then leftover else sz)
+                    if leftover >= minChunkSize then chunkSizes
+                    else
+                        // Walk through the list borrowing enough from the next item to make each item
+                        // up to min size if it isn't yet. If I reach the end and I still have something
+                        // left to borrow, I've failed to generate a good list.
+                        // This function will also reverse the chunk size list, but that doesn't matter
+                        let (fixedSizes, remainder) =
+                            chunkSizes
+                            |> List.fold (fun (l, debt) ch ->
+                                let withoutDebt = ch - debt
+                                if withoutDebt >= minChunkSize
+                                    then (withoutDebt::l, 0)
+                                    else (minChunkSize::l, minChunkSize - withoutDebt)
+                            ) ([], 0)
+
+                        if remainder = 0 then fixedSizes else lookForSplit (sz - 1)
+
+        if array.Length <= maxChunkSize then [|array|]
+        else
+            let chunkSizes = lookForSplit maxChunkSize
+            Array.unfold (fun (i, l) ->
+                match l with
+                | sz::szs -> Some (array[i..(i + sz - 1)], (i + sz, szs))
+                | [] -> None
+            ) (0, chunkSizes)
+
+    // Sorts in ascending order of keys (using the given comparer), and removes any duplicates
+    // (leaving in the element that was originally the latest in the list)
+    // resulting in output that can go through tree creation safely.
+    // Probably a bit slow. Hopefully not outrageously so
+    let sortedAndDistinct<'TKey, 'TValue> (cmp: IComparer<'TKey>) (sequence: KeyValuePair<'TKey, 'TValue> seq) =
+        // Make an array including the original indexes: this will let us correctly
+        // choose the item to keep when we find several with the same key.
+        let indexed = sequence |> Seq.mapi (fun i kv -> Common.IndexedKeyValuePair(i, kv)) |> Array.ofSeq
+
+        // Sort that in order of keys (ascending) then indexes (descending)
+        Array.Sort (array = indexed, comparer = Common.IndexedKeyValuePairKeyComparer(cmp))
+
+        // We can generate the correct distinct array now by dropping each element that has
+        // the same key as the previous one
+        [|
+            for i = 0 to (indexed.Length - 1) do
+                if i = 0 || cmp.Compare (indexed[i - 1].Key, indexed[i].Key) <> 0 then
+                    yield indexed[i].KeyValue
+        |]
+
