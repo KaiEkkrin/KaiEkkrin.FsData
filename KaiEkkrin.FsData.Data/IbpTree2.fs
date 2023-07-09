@@ -41,7 +41,9 @@ module IbpTree2 =
         // Pc as above
         val Last: Node<'TKey, 'TValue> // Pc above
 
-        new (nodes, last) = { Nodes = nodes; Last = last }
+        new (nodes, last) =
+            if Array.length nodes = 0 then failwith "Internal node with no keys is not valid"
+            { Nodes = nodes; Last = last }
         end
     with
         override this.ToString() =
@@ -105,35 +107,37 @@ module IbpTree2 =
     // ## Create from sorted array ##
 
     let creationsToIntNode<'TKey, 'TValue> (creations: NodeCreation<'TKey, 'TValue> []) =
+        // Remember, in the IntNode `nodes` array, for each key-value pair kv, kv.Value is
+        // the node containing items with key < kv.Key.
         let nodes =
             creations[..(creations.Length - 2)]
-            |> Array.map (fun x -> KeyValuePair(x.MinKey, x.Node))
+            |> Array.mapi (fun i x -> KeyValuePair(creations[i + 1].MinKey, x.Node))
 
-        IntNode (nodes, creations[creations.Length - 1].Node) |> Int
+        let intNode = IntNode (nodes, creations[creations.Length - 1].Node)
+        NodeCreation (creations[0].MinKey, Int intNode)
 
     let createSubtree<'TKey, 'TValue> b (array: KeyValuePair<'TKey, 'TValue> []) =
+        // Deal with the "none" situation separately
+        if array.Length = 0 then [||]
+        else
+            // Create the leaf nodes
+            let lengthOfSplitLeafNode = getLengthOfSplitLeafNode b
+            let leafNodes =
+                ArrayUtil.splitIntoChunks lengthOfSplitLeafNode (b - 1) array
+                |> Array.map (fun c -> NodeCreation (c[0].Key, c |> LeafNode |> Leaf))
 
-        // Create the leaf nodes
-        let lengthOfSplitLeafNode = getLengthOfSplitLeafNode b
-        let leafNodes =
-            ArrayUtil.splitIntoChunks lengthOfSplitLeafNode (b - 1) array
-            |> Array.map (fun c -> NodeCreation (c[0].Key, c |> LeafNode |> Leaf))
+            // Remember, each NodeCreation corresponds to a child node in the internal
+            // node, not to a key in it; there's always one more child nodes than keys
+            let minIntChunkSize = (getLengthOfSplitIntNode b) + 1
 
-        // Note in the internal nodes each chunk also includes the `last` node, and so must be at least
-        // one longer than `lengthOfSplitIntNode` (which is the minimum number of keys)
-        let minIntChunkSize = (getLengthOfSplitIntNode b) + 1
+            let rec createSubtreeRec (array: NodeCreation<'TKey, 'TValue> []) =
+                if array.Length < b then array
+                else
+                    ArrayUtil.splitIntoChunks minIntChunkSize b array
+                    |> Array.map creationsToIntNode
+                    |> createSubtreeRec
 
-        let rec createSubtreeRec (array: NodeCreation<'TKey, 'TValue> []) =
-            if array.Length < b then array
-            else
-                ArrayUtil.splitIntoChunks minIntChunkSize (b - 1) array
-                |> Array.map (fun c ->
-                    let intNode = creationsToIntNode c
-                    NodeCreation (c[0].MinKey, intNode)
-                )
-                |> createSubtreeRec
-
-        createSubtreeRec leafNodes
+            createSubtreeRec leafNodes
 
     // ## The tree data type ##
 
@@ -278,7 +282,7 @@ module IbpTree2 =
 
         and debugPrintInt prefix sb node =
             let keyStrings = node.Nodes |> Array.map (fun kv -> $"{kv.Key}")
-            let keyStringMaxLength = keyStrings |> Seq.map (fun s -> s.Length) |> Seq.max
+            let keyStringMaxLength = keyStrings |> Seq.fold (fun max s -> Math.Max (max, s.Length)) 2
             let prefixExtension = Array.create keyStringMaxLength ' ' |> fun cs -> new String(cs)
             for kv in node.Nodes do
                 debugPrintNode $"{prefix}...{prefixExtension}" sb kv.Value
@@ -644,7 +648,7 @@ module IbpTree2 =
                 match creations.Length with
                 | 0 -> LeafNode [||] |> Leaf
                 | 1 -> creations[0].Node
-                | _ -> creationsToIntNode creations
+                | _ -> (creationsToIntNode creations).Node
 
             Tree (b, cmp, root)
 

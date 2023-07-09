@@ -1,5 +1,7 @@
 module IbpTree2TestCommon
 
+open System
+open System.Collections.Generic
 open System.Text
 open FsUnit.Xunit
 open KaiEkkrin.FsData.Data
@@ -27,9 +29,16 @@ let buildTreeWithDebug (output: ITestOutputHelper) (b, keys) =
     output.WriteLine <| tree.ToString ()
     tree
 
-let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
-    let tree = buildTreeWithDebug output (b, keys)
+let createTreeWithDebug (output: ITestOutputHelper) (b, keys) =
+    let keyValues = keys |> Seq.map (fun k -> KeyValuePair(k, sprintf "%d" k))
+    let tree = IbpTree2.createFromB (b, Comparer<int>.Default, keyValues)
+    output.WriteLine <| tree.ToString ()
 
+    match IbpTree2.debugValidate tree with
+    | Some err -> failwithf "When creating tree from sequence: %s" err
+    | None -> tree
+
+let testFind (output: ITestOutputHelper) keys tree =
     // Check each distinct key is present
     let distinctKeys = keys |> Array.distinct
     for key in distinctKeys do
@@ -63,4 +72,12 @@ let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
 
     let e2Values = e2 |> Array.map (fun kv -> kv.Value)
     e2Values |> should equalSeq orderedValues
+
+let testInsertAndFind (output: ITestOutputHelper) (b, keys) =
+    let tree = buildTreeWithDebug output (b, keys)
+    testFind output keys tree
+
+let testCreateAndFind (output: ITestOutputHelper) (b, keys) =
+    let tree = createTreeWithDebug output (b, keys)
+    testFind output keys tree
 

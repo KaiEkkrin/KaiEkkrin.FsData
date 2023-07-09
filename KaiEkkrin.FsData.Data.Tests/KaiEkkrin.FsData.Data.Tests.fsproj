@@ -9,6 +9,7 @@
     <Compile Include="ArrayUtilTests.fs" />
     <Compile Include="IbpTree2TestCommon.fs" />
     <Compile Include="IbpTree2PropertyTests.fs" />
+    <Compile Include="IbpTree2CreationPropertyTests.fs" />
     <Compile Include="IbpTree2Tests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
