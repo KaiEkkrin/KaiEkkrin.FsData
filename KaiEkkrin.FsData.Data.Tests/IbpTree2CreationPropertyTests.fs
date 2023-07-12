@@ -157,3 +157,58 @@ type PropertyTests(output: ITestOutputHelper) =
             let enumeratedValues = enumeration |> Array.map (fun kv -> kv.Value)
             enumeratedValues |> should equalSeq orderedValues
 
+    [<Property>]
+    let ``Keys not in a tree have no effect when deleted``() =
+        let arb = Arb.fromGen <| gen {
+            let! b = TestCommon.genBValue
+
+            // Generate some keys to insert -- these will always be multiples of 3
+            // so we can always look for a missing key in between valid keys
+            // TODO Also test with duplicates!
+            let! keys =
+                Gen.choose (1, b * 7)
+                |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
+
+            let! shuffledKeys = Gen.shuffle keys
+            let! notPresentKey = Gen.choose (-1000, -1)
+            return (b, shuffledKeys, notPresentKey)
+        }
+
+        Prop.forAll arb <| fun (b, keys, notPresentKey) ->
+            let tree =
+                IbpTree2TestCommon.createTreeWithDebug output (b, keys)
+                |> IbpTree2.delete notPresentKey
+
+            IbpTree2TestCommon.testFind output keys tree
+
+    [<Property>]
+    let ``Keys in a tree can be deleted``() =
+        let arb = Arb.fromGen <| gen {
+            let! b = TestCommon.genBValue
+
+            // Generate some keys to insert -- these will always be multiples of 3
+            // so we can always look for a missing key in between valid keys
+            // TODO Also test with duplicates!
+            let! keys =
+                Gen.choose (1, b * 7)
+                |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
+
+            let! shuffledKeys = Gen.shuffle keys
+
+            let! deleteCount = Gen.choose (1, keys.Length)
+            let! deleteKeys = shuffledKeys[..(deleteCount - 1)] |> Gen.shuffle
+            return (b, shuffledKeys, deleteKeys)
+        }
+
+        Prop.forAll arb <| fun (b, keys, deleteKeys) ->
+            // TODO remove debug
+            if (deleteKeys.Length = 0) then failwith "no delete keys"
+
+            let tree =
+                IbpTree2TestCommon.createTreeWithDebug output (b, keys)
+                |> IbpTree2TestCommon.deleteFromTreeWithDebug output deleteKeys
+
+            let notDeletedKeys = keys |> Array.except deleteKeys
+            IbpTree2TestCommon.testFind output notDeletedKeys tree
+            IbpTree2TestCommon.testNotFound deleteKeys tree
+

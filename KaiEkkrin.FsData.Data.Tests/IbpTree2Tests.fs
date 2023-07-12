@@ -51,3 +51,37 @@ type Tests(output: ITestOutputHelper) =
         output.WriteLine "Tree made with createFrom:"
         IbpTree2TestCommon.testCreateAndFind output (3, keys)
 
+    [<Fact>]
+    let ``This set of values in a tree can be deleted 1``() =
+        let keys = [|15; 33; 3; 30; 0; 18; 6; 9; 36; 12; 27; 21; 24|]
+        let deleteKeys = [|15; 3; 33; 30|]
+
+        let tree =
+            IbpTree2TestCommon.buildTreeWithDebug output (3, keys)
+            |> IbpTree2TestCommon.deleteFromTreeWithDebug output deleteKeys
+
+        output.WriteLine ""
+        output.WriteLine <| sprintf "Tree after deleting %A:" deleteKeys
+        output.WriteLine <| tree.ToString ()
+
+        let notDeletedKeys = keys |> Array.except deleteKeys
+        IbpTree2TestCommon.testFind output notDeletedKeys tree
+        IbpTree2TestCommon.testNotFound deleteKeys tree
+
+    [<Fact>]
+    let ``This set of values in a tree can be deleted 2``() =
+        let keys = [|3; 0|]
+        let deleteKeys = [|0; 3|]
+
+        let tree =
+            IbpTree2TestCommon.createTreeWithDebug output (4, keys)
+            |> IbpTree2TestCommon.deleteFromTreeWithDebug output deleteKeys
+
+        output.WriteLine ""
+        output.WriteLine <| sprintf "Tree after deleting %A:" deleteKeys
+        output.WriteLine <| tree.ToString ()
+
+        let notDeletedKeys = keys |> Array.except deleteKeys
+        IbpTree2TestCommon.testFind output notDeletedKeys tree
+        IbpTree2TestCommon.testNotFound deleteKeys tree
+

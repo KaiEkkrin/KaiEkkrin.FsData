@@ -41,9 +41,7 @@ module IbpTree2 =
         // Pc as above
         val Last: Node<'TKey, 'TValue> // Pc above
 
-        new (nodes, last) =
-            if Array.length nodes = 0 then failwith "Internal node with no keys is not valid"
-            { Nodes = nodes; Last = last }
+        new (nodes, last) = { Nodes = nodes; Last = last }
         end
     with
         override this.ToString() =
@@ -87,7 +85,12 @@ module IbpTree2 =
     // The result of doing a delete. (TODO)
     type NodeDeletion<'TKey, 'TValue> =
         | NotPresent // key not found in leaf; nothing to delete
-        | Kept of Node<'TKey, 'TValue> // the node, updated but not merged
+        | Kept of 'TKey * Node<'TKey, 'TValue> // the node, updated but not merged, with its new min key
+        | BorrowedLeft of Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue> // borrowed from the left -- left min key can't have changed
+        | BorrowedRight of 'TKey * Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue> // borrowed from the right -- right min key may have changed
+        | MergedLeft of Node<'TKey, 'TValue> // merged to the left -- min key is as the left sibling's
+        | MergedRight of 'TKey * Node<'TKey, 'TValue> // merged to the right -- min key may have changed
+        | Deleted // the node is gone completely
 
     // The result of validating a node.
     type NodeValidationResult<'TKey, 'TValue> =
@@ -408,7 +411,9 @@ module IbpTree2 =
 
         let rec firstInNode node =
             match node with
-            | Int intNode -> (Array.head intNode.Nodes).Value |> firstInNode
+            | Int intNode ->
+                if intNode.Nodes.Length = 0 then firstInNode intNode.Last
+                else (Array.head intNode.Nodes).Value |> firstInNode
             | Leaf leafNode -> Array.head leafNode.Values
 
         // ## Search (forward sequence) ##
@@ -536,66 +541,253 @@ module IbpTree2 =
 
         // ## Delete ##
 
-        let rec deleteFromNode key node =
-            match node with
-            | Int intNode -> deleteFromInt key intNode
-            | Leaf leafNode -> deleteFromLeaf key leafNode
+        let rec deleteFromNode key (left, middle, right) =
+            match (left, middle, right) with
+            | (None, Int m, None) -> deleteFromInt key (None, m, None)
+            | (None, Int m, Some (Int r)) -> deleteFromInt key (None, m, Some r)
+            | (Some (Int l), Int m, None) -> deleteFromInt key (Some l, m, None)
+            | (Some (Int l), Int m, Some (Int r)) -> deleteFromInt key (Some l, m, Some r)
+            | (None, Leaf m, None) -> deleteFromLeaf key (None, m, None)
+            | (None, Leaf m, Some (Leaf r)) -> deleteFromLeaf key (None, m, Some r)
+            | (Some (Leaf l), Leaf m, None) -> deleteFromLeaf key (Some l, m, None)
+            | (Some (Leaf l), Leaf m, Some (Leaf r)) -> deleteFromLeaf key (Some l, m, Some r)
+            | _ -> failwithf "Left-middle-right mismatch: %A; %A; %A" left middle right
 
-        and deleteFromInt key node =
+        and deleteFromInt key (left, node, right) =
             let index = findIndexInInt key node
-            let deletion =
-                if index = node.Nodes.Length then deleteFromNode key node.Last
-                else deleteFromNode key node.Nodes[index].Value
+            let thisLeft = if index = 0 then None else Some (node.Nodes[index - 1].Value)
+            let thisNode = if index = node.Nodes.Length then node.Last else node.Nodes[index].Value
+            let thisRight =
+                if index = node.Nodes.Length then None
+                elif index = node.Nodes.Length - 1 then Some (node.Last)
+                else Some (node.Nodes[index + 1].Value)
 
-            match deletion with
+            match deleteFromNode key (thisLeft, thisNode, thisRight) with
             | NotPresent -> NotPresent
-            | Kept keptNode ->
-                if index = node.Nodes.Length then
-                    // We replaced the last node. The key may have changed
-                    if Comparer.Compare (node.Nodes[index - 1].Key, key) = 0
-                    then
-                        let newMin = (node.Nodes[index - 1].Value |> firstInNode).Key
-                        let newNodes =
-                            node.Nodes
-                            |> ArrayUtil.arraySplice1 (index - 1) 1 (KeyValuePair (newMin, node.Nodes[index - 1].Value))
+            | Kept (minKey, keptNode) ->
+                if index = 0 then
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySplice1 0 1 (KeyValuePair (node.Nodes[0].Key, keptNode))
 
-                        IntNode (newNodes, keptNode) |> Int |> Kept
+                    postDeleteFromInt (Some minKey) (left, IntNode (newNodes, node.Last), right)
 
-                    else
-                        IntNode (node.Nodes, keptNode) |> Int |> Kept
+                elif index = node.Nodes.Length then
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySplice1 (index - 1) 1 (KeyValuePair (minKey, node.Nodes[index - 1].Value))
 
-                elif index > 0 && Comparer.Compare (node.Nodes[index - 1].Key, key) = 0 then
-                    // We replaced a node in the middle, and the key has changed
-                    let newMin = (node.Nodes[index - 1].Value |> firstInNode).Key
+                    postDeleteFromInt None (left, IntNode (newNodes, keptNode), right)
+
+                else
+                    // We replaced a node somewhere within the list.
                     let newNodes =
                         node.Nodes
                         |> ArrayUtil.arraySpliceX (index - 1) 2 [|
-                            KeyValuePair (newMin, node.Nodes[index - 1].Value)
+                            KeyValuePair (minKey, node.Nodes[index - 1].Value)
                             KeyValuePair (node.Nodes[index].Key, keptNode)
                         |]
 
-                    IntNode (newNodes, node.Last) |> Int |> Kept
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
 
-                else
-                    // The key has not changed, only the node.
+            | BorrowedLeft (bLeft, bMiddleKey, bMiddle) ->
+                if index = 0 then failwith "No left sibling to borrow from"
+                elif index = node.Nodes.Length then
                     let newNodes =
                         node.Nodes
-                        |> ArrayUtil.arraySplice1 index 1 (KeyValuePair (node.Nodes[index].Key, keptNode))
+                        |> ArrayUtil.arraySplice1 (index - 1) 1 (KeyValuePair (bMiddleKey, bLeft))
 
-                    IntNode (newNodes, node.Last) |> Int |> Kept
+                    postDeleteFromInt None (left, IntNode (newNodes, bMiddle), right)
 
-        and deleteFromLeaf key node =
+                else
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySpliceX (index - 1) 2 [|
+                            KeyValuePair (bMiddleKey, bLeft)
+                            KeyValuePair (node.Nodes[index].Key, bMiddle)
+                        |]
+
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+
+            | BorrowedRight (bMiddleKey, bMiddle, bRightKey, bRight) ->
+                if index = node.Nodes.Length then failwith "No right sibling to borrow from"
+                elif index = 0 && node.Nodes.Length = 1 then
+                    let newNodes = [| KeyValuePair (bRightKey, bMiddle) |]
+                    postDeleteFromInt (Some bMiddleKey) (left, IntNode (newNodes, bRight), right)
+
+                elif index = node.Nodes.Length - 1 then
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySpliceX (index - 1) 2 [|
+                            KeyValuePair (bMiddleKey, node.Nodes[index - 1].Value)
+                            KeyValuePair (bRightKey, bMiddle)
+                        |]
+
+                    postDeleteFromInt None (left, IntNode (newNodes, bRight), right)
+
+                 elif index = 0 then
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySpliceX index 2 [|
+                            KeyValuePair (bRightKey, bMiddle)
+                            KeyValuePair (node.Nodes[index + 1].Key, bRight)
+                        |]
+
+                    postDeleteFromInt (Some bMiddleKey) (left, IntNode (newNodes, node.Last), right)
+
+                else
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySpliceX (index - 1) 3 [|
+                            KeyValuePair (bMiddleKey, node.Nodes[index - 1].Value)
+                            KeyValuePair (bRightKey, bMiddle)
+                            KeyValuePair (node.Nodes[index + 1].Key, bRight)
+                        |]
+
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+
+            | MergedLeft mLeft ->
+                if index = 0 then failwith "No left sibling to borrow from"
+                elif index = node.Nodes.Length then
+                    let newNodes = node.Nodes |> ArrayUtil.arraySpliceX (node.Nodes.Length - 1) 1 [||]
+                    postDeleteFromInt None (left, IntNode (newNodes, mLeft), right)
+
+                else
+                    let newNodes = node.Nodes |> ArrayUtil.arraySplice1 (index - 1) 2 (KeyValuePair (node.Nodes[index].Key, mLeft))
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+
+            | MergedRight (mRightKey, mRight) ->
+                if index = node.Nodes.Length then failwith "No right sibling to borrow from"
+                elif index = 0 && node.Nodes.Length = 1 then
+                    // Here I need to generate an empty internal node with a Left pointer only.
+                    // This isn't valid in any complete tree but should be okay transiently (it'll be merged again)
+                    postDeleteFromInt (Some mRightKey) (left, IntNode ([||], mRight), right)
+
+                elif index = 0 then
+                    let newNodes = node.Nodes |> ArrayUtil.arraySplice1 0 2 (KeyValuePair (node.Nodes[index + 1].Key, mRight))
+                    postDeleteFromInt (Some mRightKey) (left, IntNode (newNodes, node.Last), right)
+
+                elif index = node.Nodes.Length - 1 then
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySplice1 (index - 1) 2 (KeyValuePair (mRightKey, node.Nodes[index - 1].Value))
+
+                    postDeleteFromInt None (left, IntNode (newNodes, mRight), right)
+
+                else
+                    let newNodes =
+                        node.Nodes
+                        |> ArrayUtil.arraySpliceX (index - 1) 3 [|
+                            KeyValuePair (mRightKey, node.Nodes[index - 1].Value)
+                            KeyValuePair (node.Nodes[index + 1].Key, mRight)
+                        |]
+
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+
+            | Deleted ->
+                if index = 0 && node.Nodes.Length = 0 then Deleted
+                elif index = node.Nodes.Length then
+                    let newNodes = node.Nodes |> ArrayUtil.arraySpliceX (node.Nodes.Length - 1) 1 [||]
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Nodes[node.Nodes.Length - 1].Value), right)
+
+                else
+                    let newNodes = node.Nodes |> ArrayUtil.arraySpliceX index 1 [||]
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+
+        and postDeleteFromInt maybeMinKey (left, node, right) =
+            let resolveMinKey () =
+                match maybeMinKey with
+                | Some m -> m
+                | None -> (node |> Int |> firstInNode).Key
+
+            // Work out whether or not this node is still big enough and
+            // if not, borrow/merge as appropriate.
+            match (left, right) with
+            | _ when node.Nodes.Length >= lengthOfSplitIntNode ->
+                // TODO common case -- optimisation: avoid needing to fetch `maybeMinKey`?
+                Kept (resolveMinKey (), node |> Int)
+
+            | (Some l, _) when l.Nodes.Length > lengthOfSplitIntNode ->
+                // We can grab a value from the node on the left to fill this one out:
+                let newMiddleNodes = node.Nodes |> ArrayUtil.arraySplice1 0 0 (KeyValuePair (resolveMinKey (), l.Last))
+                let newLeftLast = l.Nodes[l.Nodes.Length - 1]
+                let newLeftNodes = l.Nodes |> ArrayUtil.arraySpliceX (l.Nodes.Length - 1) 1 [||]
+                BorrowedLeft (
+                    IntNode (newLeftNodes, newLeftLast.Value) |> Int,
+                    newLeftLast.Key,
+                    IntNode (newMiddleNodes, node.Last) |> Int)
+
+            | (_, Some r) when r.Nodes.Length > lengthOfSplitIntNode ->
+                // We can grab a value from the node on the right to fill this one out:
+                let rightMinKey = (firstInNode r.Nodes[0].Value).Key
+                let newMiddleNodes = node.Nodes |> ArrayUtil.arraySplice1 node.Nodes.Length 0 (KeyValuePair (rightMinKey, node.Last))
+                let newMiddleLast = r.Nodes[0]
+                let newRightNodes = r.Nodes |> ArrayUtil.arraySpliceX 0 1 [||]
+                BorrowedRight (
+                    resolveMinKey (),
+                    IntNode (newMiddleNodes, newMiddleLast.Value) |> Int,
+                    newMiddleLast.Key,
+                    IntNode (newRightNodes, r.Last) |> Int)
+
+            | (Some l, _) ->
+                // The left node and this are both minimum size nodes or under and we can merge them
+                let mergedNodes =
+                    node.Nodes
+                    |> ArrayUtil.arraySplice1 0 0 (KeyValuePair (resolveMinKey (), l.Last))
+                    |> ArrayUtil.arraySpliceX 0 0 l.Nodes
+
+                IntNode (mergedNodes, node.Last) |> Int |> MergedLeft
+
+            | (_, Some r) ->
+                // The right node and this are both minimum size nodes or under and we can merge them
+                let rightMinKey = (firstInNode r.Nodes[0].Value).Key
+                let mergedNodes =
+                    r.Nodes
+                    |> ArrayUtil.arraySplice1 0 0 (KeyValuePair (rightMinKey, node.Last))
+                    |> ArrayUtil.arraySpliceX 0 0 node.Nodes
+
+                MergedRight (resolveMinKey (), IntNode (mergedNodes, r.Last) |> Int)
+
+            | _ ->
+                // This should only occur if this is the only node in the tree.
+                Kept (resolveMinKey (), node |> Int)
+
+        and deleteFromLeaf key (left, node, right) =
             match findIndexInLeaf key node with
             | (_, false) -> NotPresent
-            | (i, true) when node.Values.Length > lengthOfSplitLeafNode ->
-                // We can delete this one key-value pair, and retain a node here
-                let withKeyDeleted = node.Values |> ArrayUtil.arraySpliceX i 1 [||]
-                withKeyDeleted |> LeafNode |> Leaf |> Kept
-
             | (i, true) ->
-                // TODO don't do this but instead do a node merge of some kind
-                let withKeyDeleted = node.Values |> ArrayUtil.arraySpliceX i 1 [||]
-                withKeyDeleted |> LeafNode |> Leaf |> Kept
+                let newValues = node.Values |> ArrayUtil.arraySpliceX i 1 [||]
+                match (left, right) with
+                | _ when newValues.Length >= lengthOfSplitLeafNode ->
+                    // No borrowing or merging required
+                    Kept (newValues[0].Key, newValues |> LeafNode |> Leaf)
+
+                | (Some l, _) when l.Values.Length > lengthOfSplitLeafNode ->
+                    // We can grab a value from the node on the left to fill this one out:
+                    let newMiddle = newValues |> ArrayUtil.arraySplice1 0 0 l.Values[l.Values.Length - 1]
+                    let newLeft = l.Values |> ArrayUtil.arraySpliceX (l.Values.Length - 1) 1 [||]
+                    BorrowedLeft (newLeft |> LeafNode |> Leaf, newMiddle[0].Key, newMiddle |> LeafNode |> Leaf)
+
+                | (_, Some r) when r.Values.Length > lengthOfSplitLeafNode ->
+                    // We can grab a value from the node on the right to fill this one out:
+                    let newMiddle = newValues |> ArrayUtil.arraySplice1 newValues.Length 0 r.Values[0]
+                    let newRight = r.Values |> ArrayUtil.arraySpliceX 0 1 [||]
+                    BorrowedRight (newMiddle[0].Key, newMiddle |> LeafNode |> Leaf, newRight[0].Key, newRight |> LeafNode |> Leaf)
+
+                | (Some l, _) ->
+                    // The left node and this are both minimum size nodes or under and we can merge them
+                    let merged = newValues |> ArrayUtil.arraySpliceX 0 0 l.Values
+                    MergedLeft (merged |> LeafNode |> Leaf)
+
+                | (_, Some r) ->
+                    // The right node and this are both minimum size nodes or under and we can merge them
+                    let merged = newValues |> ArrayUtil.arraySpliceX newValues.Length 0 r.Values
+                    MergedRight (merged[0].Key, merged |> LeafNode |> Leaf)
+
+                | _ ->
+                    // This should only occur if this is the only node in the tree.
+                    if newValues.Length = 0 then Deleted
+                    else Kept (newValues[0].Key, newValues |> LeafNode |> Leaf)
 
         // ## Public methods ##
 
@@ -614,9 +806,14 @@ module IbpTree2 =
                         | _ -> None
 
         member this.Delete key =
-            match deleteFromNode key Root with
+            match deleteFromNode key (None, Root, None) with
             | NotPresent -> this
-            | Kept node -> Tree(B, Comparer, node)
+            | Kept (_, Int intNode) when intNode.Nodes.Length = 0 ->
+                // Reduce the height of the tree by 1
+                Tree (B, Comparer, intNode.Last)
+            | Kept (_, node) -> Tree (B, Comparer, node)
+            | Deleted -> Tree (B, Comparer, [||] |> LeafNode |> Leaf)
+            | _ -> failwith "Unhandled delete case" // TODO ??? -- need to deal with replacing the root node with a lower one.
 
         member this.EnumerateFrom key = findSeqInNode key Root
 
