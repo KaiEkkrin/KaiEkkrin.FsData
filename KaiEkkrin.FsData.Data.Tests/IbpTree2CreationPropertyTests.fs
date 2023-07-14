@@ -25,7 +25,7 @@ type PropertyTests(output: ITestOutputHelper) =
             let x = IbpTree2.tryFind key emptyTree
             x |> should equal None
 
-    [<Property>]
+    [<Property(MaxTest = 500)>]
     let ``A one-item tree contains one item``() =
         let arb = Arb.fromGen <| gen {
             let! b = TestCommon.genBValue
@@ -45,14 +45,13 @@ type PropertyTests(output: ITestOutputHelper) =
             let notFound = IbpTree2.tryFind nonMatchingKey tree
             notFound |> should equal None
 
-    [<Property>]
+    [<Property(MaxTest = 500)>]
     let ``Values inserted randomly into a tree can be retrieved``() =
         let arb = Arb.fromGen <| gen {
             let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
-            // TODO Also test with duplicates!
             let! keys =
                 Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
@@ -63,14 +62,13 @@ type PropertyTests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| IbpTree2TestCommon.testCreateAndFind output
 
-    [<Property>]
+    [<Property(MaxTest = 500)>]
     let ``Values inserted in order into a tree can be retrieved``() =
         let arb = Arb.fromGen <| gen {
             let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
-            // TODO Also test with duplicates!
             let! keys =
                 Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
@@ -80,14 +78,13 @@ type PropertyTests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| IbpTree2TestCommon.testCreateAndFind output
 
-    [<Property>]
+    [<Property(MaxTest = 500)>]
     let ``Values inserted in reverse order into a tree can be retrieved``() =
         let arb = Arb.fromGen <| gen {
             let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
-            // TODO Also test with duplicates!
             let! keys =
                 Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
@@ -97,14 +94,13 @@ type PropertyTests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| IbpTree2TestCommon.testCreateAndFind output
 
-    [<Property>]
+    [<Property(MaxTest = 500)>]
     let ``Values including duplicates inserted randomly into a tree can be retrieved``() =
         let arb = Arb.fromGen <| gen {
             let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
-            // TODO Also test with duplicates!
             let! keys =
                 Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
@@ -120,7 +116,7 @@ type PropertyTests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| IbpTree2TestCommon.testCreateAndFind output
 
-    [<Property>]
+    [<Property(MaxTest = 500)>]
     let ``Forward enumeration works from any point``() =
         let arb = Arb.fromGen <| gen {
             let! b = TestCommon.genBValue
@@ -157,14 +153,13 @@ type PropertyTests(output: ITestOutputHelper) =
             let enumeratedValues = enumeration |> Array.map (fun kv -> kv.Value)
             enumeratedValues |> should equalSeq orderedValues
 
-    [<Property>]
+    [<Property(MaxTest = 500)>]
     let ``Keys not in a tree have no effect when deleted``() =
         let arb = Arb.fromGen <| gen {
             let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
-            // TODO Also test with duplicates!
             let! keys =
                 Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
@@ -181,14 +176,13 @@ type PropertyTests(output: ITestOutputHelper) =
 
             IbpTree2TestCommon.testFind output keys tree
 
-    [<Property>]
+    [<Property(MaxTest = 500)>]
     let ``Keys in a tree can be deleted``() =
         let arb = Arb.fromGen <| gen {
             let! b = TestCommon.genBValue
 
             // Generate some keys to insert -- these will always be multiples of 3
             // so we can always look for a missing key in between valid keys
-            // TODO Also test with duplicates!
             let! keys =
                 Gen.choose (1, b * 7)
                 |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
@@ -201,7 +195,6 @@ type PropertyTests(output: ITestOutputHelper) =
         }
 
         Prop.forAll arb <| fun (b, keys, deleteKeys) ->
-            // TODO remove debug
             if (deleteKeys.Length = 0) then failwith "no delete keys"
 
             let tree =
@@ -211,4 +204,31 @@ type PropertyTests(output: ITestOutputHelper) =
             let notDeletedKeys = keys |> Array.except deleteKeys
             IbpTree2TestCommon.testFind output notDeletedKeys tree
             IbpTree2TestCommon.testNotFound deleteKeys tree
+
+    [<Property(MaxTest = 500)>]
+    let ``Values in a tree can be edited``() =
+        let arb = Arb.fromGen <| gen {
+            let! b = TestCommon.genBValue
+
+            // Generate some keys to insert -- these will always be multiples of 3
+            // so we can always look for a missing key in between valid keys
+            let! keys =
+                Gen.choose (1, b * 7)
+                |> Gen.map (fun count -> Array.init count (fun i -> i * 3))
+
+            let! shuffledKeys = Gen.shuffle keys
+
+            let! editCount = Gen.choose (1, keys.Length)
+            let! editKeys = shuffledKeys[..(editCount - 1)] |> Gen.shuffle
+            return (b, shuffledKeys, editKeys)
+        }
+
+        Prop.forAll arb <| fun (b, keys, editKeys) ->
+            if (editKeys.Length = 0) then failwith "no edit keys"
+
+            let tree =
+                IbpTree2TestCommon.createTreeWithDebug output (b, keys)
+                |> IbpTree2TestCommon.editTreeWithDebug output editKeys
+
+            IbpTree2TestCommon.testFindEdited output keys editKeys tree
 

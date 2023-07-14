@@ -59,6 +59,27 @@ let deleteFromTreeWithDebug (output: ITestOutputHelper) keys tree =
     output.WriteLine <| tree.ToString ()
     updatedTree
 
+let editTreeWithDebug (output: ITestOutputHelper) keys tree =
+    let updatedTree =
+        keys
+        |> Array.fold (fun t key ->
+            // Again validate on every step
+            let t2 = IbpTree2.insert key (sprintf "E%d" key) t
+            match IbpTree2.debugValidate t2 with
+            | None -> t2
+            | Some err ->
+                let sb = StringBuilder ()
+                sprintf "When editing %A: %s" key err |> sb.AppendLine |> ignore
+                sb.AppendLine "-- Tree before --" |> ignore
+                t.ToString() |> sb.AppendLine |> ignore
+                sb.AppendLine "-- Tree after --" |> ignore
+                t2.ToString() |> sb.AppendLine |> ignore
+                failwith <| sb.ToString ()
+        ) tree
+
+    output.WriteLine <| tree.ToString ()
+    updatedTree
+
 let testFind (output: ITestOutputHelper) keys tree =
     // Check each distinct key is present
     let distinctKeys = keys |> Array.distinct
@@ -76,6 +97,56 @@ let testFind (output: ITestOutputHelper) keys tree =
     // ordered list of distinct key-value pairs
     let orderedKeys = distinctKeys |> Array.sort
     let orderedValues = orderedKeys |> Array.map (sprintf "%d")
+    let maybeMinKey =
+        distinctKeys
+        |> Array.fold (fun st k -> match st with | Some v -> Some <| Math.Min (v, k) | None -> Some k) None
+
+    match maybeMinKey with
+    | Some minKey ->
+        let enumeration = IbpTree2.enumerateFrom minKey tree |> Array.ofSeq
+
+        let enumeratedKeys = enumeration |> Array.map (fun kv -> kv.Key)
+        enumeratedKeys |> should equalSeq orderedKeys
+
+        let enumeratedValues = enumeration |> Array.map (fun kv -> kv.Value)
+        enumeratedValues |> should equalSeq orderedValues
+
+    | None ->
+        keys |> should be Empty
+
+    // The implementation of IEnumerable<> should also work like that
+    let e2 = tree |> Array.ofSeq
+
+    let e2Keys = e2 |> Array.map (fun kv -> kv.Key)
+    e2Keys |> should equalSeq orderedKeys
+
+    let e2Values = e2 |> Array.map (fun kv -> kv.Value)
+    e2Values |> should equalSeq orderedValues
+
+let testFindEdited (output: ITestOutputHelper) keys editedKeys tree =
+    // Check each distinct key is present
+    let distinctKeys = keys |> Array.distinct
+    for key in distinctKeys do
+        let found = IbpTree2.tryFind key tree
+        let expected =
+            if (Array.contains key editedKeys) then (sprintf "E%d" key)
+            else (sprintf "%d" key)
+
+        found |> should equal (Some expected)
+
+        let notFound1 = IbpTree2.tryFind (key + 1) tree
+        notFound1 |> should equal None
+
+        let notFound2 = IbpTree2.tryFind (key - 1) tree
+        notFound2 |> should equal None
+
+    // Check that the forward enumeration of the whole tree equals the
+    // ordered list of distinct key-value pairs
+    let orderedKeys = distinctKeys |> Array.sort
+    let orderedValues = orderedKeys |> Array.map (fun key ->
+        if (Array.contains key editedKeys) then (sprintf "E%d" key)
+        else (sprintf "%d" key))
+
     let maybeMinKey =
         distinctKeys
         |> Array.fold (fun st k -> match st with | Some v -> Some <| Math.Min (v, k) | None -> Some k) None
