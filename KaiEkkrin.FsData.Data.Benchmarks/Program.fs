@@ -160,6 +160,34 @@ type TreeEnumerateMid() =
     member this.EnumerateMidLargeIsd() =
         largeIsd |> Seq.filter (fun kv -> kv.Key < randomKeysToDelete[0]) |> Seq.take 1000 |> Seq.last
 
+[<MemoryDiagnoser>]
+type TreeFind() =
+    // so we're not always looking for the same one
+    static let mutable index3 = 0
+    static let mutable index16 = 0
+    static let mutable index128 = 0
+    static let mutable indexIsd = 0
+
+    [<Benchmark(Description = "Find a value from within a large IbpTree2(3)")>]
+    member this.FindIbp3() =
+        largeTree3 |> IbpTree2.tryFind randomKeysToDelete[index3] |> ignore
+        index3 <- if index3 = 999 then 0 else index3 + 1
+
+    [<Benchmark(Description = "Find a value from within a large IbpTree2(16)")>]
+    member this.FindIbp16() =
+        largeTree16 |> IbpTree2.tryFind randomKeysToDelete[index16] |> ignore
+        index16 <- if index16 = 999 then 0 else index16 + 1
+
+    [<Benchmark(Description = "Find a value from within a large IbpTree2(128)")>]
+    member this.FindIbp128() =
+        largeTree128 |> IbpTree2.tryFind randomKeysToDelete[index128] |> ignore
+        index128 <- if index128 = 999 then 0 else index128 + 1
+
+    [<Benchmark(Description = "Find a value from within a large ImmutableSortedDictionary", Baseline = true)>]
+    member this.FindIsd() =
+        largeIsd.TryGetValue randomKeysToDelete[indexIsd] |> ignore
+        indexIsd <- if indexIsd = 999 then 0 else indexIsd + 1
+
 [<EntryPoint>]
 let main argv =
     BenchmarkSwitcher.FromAssembly(typeof<TreeCreate>.Assembly).Run argv |> ignore
