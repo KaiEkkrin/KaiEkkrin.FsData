@@ -5,7 +5,10 @@ open BenchmarkDotNet.Attributes
 open BenchmarkDotNet.Running
 open KaiEkkrin.FsData.Data
 
-// See https://phillipcarter.dev/posts/benchmarking-fsharp/
+// See https://phillipcarter.dev/posts/benchmarking-fsharp/ to get started with BenchmarkDotNet in F#
+// Run with profiling using `dotnet run -c Release -- -p EP`
+// Analyse .speedscope.json files with https://www.speedscope.app/
+// (see https://benchmarkdotnet.org/articles/features/event-pipe-profiler.html for more benchmark details)
 
 // TODO try using other, more complicated keys and values here.
 // For now I'm going to use a string key and this value type:
