@@ -159,11 +159,11 @@ module IbpTree2 =
 
             // Finds within a range of the array between a (inclusive) and b (exclusive.)
             let rec doFindIterate a b =
-                if b <= a then (a, false)
+                if b <= a then struct (a, false)
                 else
                     match Comparer.Compare (key, node.Values[a].Key) with
-                    | 0 -> (a, true)
-                    | n when n < 0 -> (a, false)
+                    | 0 -> struct (a, true)
+                    | n when n < 0 -> struct (a, false)
                     | _ -> doFindIterate (a + 1) b
 
             let rec doFind a b =
@@ -171,7 +171,7 @@ module IbpTree2 =
                 else
                     let i = (a + b) / 2
                     match Comparer.Compare (key, node.Values[i].Key) with
-                    | 0 -> (i, true)
+                    | 0 -> struct (i, true)
                     | n when n < 0 -> doFind a i
                     | _ -> doFind (i + 1) b
 
@@ -417,7 +417,7 @@ module IbpTree2 =
 
         and findInLeaf key node =
             match findIndexInLeaf key node with
-            | (index, true) -> Some node.Values[index].Value
+            | struct (index, true) -> Some node.Values[index].Value
             | _ -> None
 
         // ## First item (lowest) ##
@@ -448,7 +448,7 @@ module IbpTree2 =
 
         and findSeqInLeaf key node =
             match findIndexInLeaf key node with
-            | (index, _) when index < node.Values.Length ->
+            | struct (index, _) when index < node.Values.Length ->
                 node.Values[index..] |> Seq.ofArray
             | _ -> Seq.empty
 
@@ -460,7 +460,7 @@ module IbpTree2 =
             | Leaf leafNode -> insertInLeaf key value leafNode
 
         and insertInLeaf key value node =
-            let (index, isExactMatch) = findIndexInLeaf key node
+            let struct (index, isExactMatch) = findIndexInLeaf key node
             if isExactMatch then
                 // This is a straightforward value replacement and never needs splitting
                 let newValues =
@@ -767,8 +767,8 @@ module IbpTree2 =
 
         and deleteFromLeaf key (left, node, right) =
             match findIndexInLeaf key node with
-            | (_, false) -> NotPresent
-            | (i, true) ->
+            | struct (_, false) -> NotPresent
+            | struct (i, true) ->
                 let newValues = node.Values |> ArrayUtil.arraySpliceX i 1 [||]
                 match (left, right) with
                 | _ when newValues.Length >= lengthOfSplitLeafNode ->
