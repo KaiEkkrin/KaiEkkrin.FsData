@@ -196,6 +196,26 @@ module IbpTree2 =
 
         // ## Enumerate all key-value pairs in order ##
 
+        let enumerateAll node = seq {
+            let stack = Stack< Node<'TKey, 'TValue> >(B * 3)
+            stack.Push node
+            let mutable topNode = node
+            while stack.TryPop (ref topNode) do
+                match topNode with
+                | Int intNode ->
+                    // I need to push the nodes onto the stack in reverse order so that they
+                    // come up in the correct order when popped
+                    stack.EnsureCapacity (stack.Count + intNode.Nodes.Length + 1) |> ignore
+                    stack.Push intNode.Last
+                    let endIndex = intNode.Nodes.Length - 1
+                    for i in 0..endIndex do
+                        stack.Push (intNode.Nodes[endIndex - i].Value)
+
+                | Leaf leafNode ->
+                    for kv in leafNode.Values do
+                        yield kv
+        }
+
         let rec enumerateAll node =
             match node with
             | Int intNode -> enumerateAllInt intNode
@@ -464,7 +484,7 @@ module IbpTree2 =
             if isExactMatch then
                 // This is a straightforward value replacement and never needs splitting
                 let newValues =
-                    ArrayUtil.arraySplice1 index 1 (KeyValuePair(key, value)) node.Values
+                    ArrayUtil.arrayReplace1 index (KeyValuePair(key, value)) node.Values
 
                 newValues |> LeafNode |> Leaf |> Single
 
@@ -503,7 +523,7 @@ module IbpTree2 =
                 else
                     let newItem = KeyValuePair(node.Nodes[index].Key, u)
                     let newNodes =
-                        ArrayUtil.arraySplice1 index 1 newItem node.Nodes
+                        ArrayUtil.arrayReplace1 index newItem node.Nodes
 
                     IntNode (newNodes, node.Last) |> Int |> Single
 
@@ -581,25 +601,24 @@ module IbpTree2 =
                 if index = 0 then
                     let newNodes =
                         node.Nodes
-                        |> ArrayUtil.arraySplice1 0 1 (KeyValuePair (node.Nodes[0].Key, keptNode))
+                        |> ArrayUtil.arrayReplace1 0 (KeyValuePair (node.Nodes[0].Key, keptNode))
 
                     postDeleteFromInt (Some minKey) (left, IntNode (newNodes, node.Last), right)
 
                 elif index = node.Nodes.Length then
                     let newNodes =
                         node.Nodes
-                        |> ArrayUtil.arraySplice1 (index - 1) 1 (KeyValuePair (minKey, node.Nodes[index - 1].Value))
+                        |> ArrayUtil.arrayReplace1 (index - 1) (KeyValuePair (minKey, node.Nodes[index - 1].Value))
 
                     postDeleteFromInt None (left, IntNode (newNodes, keptNode), right)
 
                 else
                     // We replaced a node somewhere within the list.
+                    let a = KeyValuePair (minKey, node.Nodes[index - 1].Value)
+                    let b = KeyValuePair (node.Nodes[index].Key, keptNode)
                     let newNodes =
                         node.Nodes
-                        |> ArrayUtil.arraySpliceX (index - 1) 2 [|
-                            KeyValuePair (minKey, node.Nodes[index - 1].Value)
-                            KeyValuePair (node.Nodes[index].Key, keptNode)
-                        |]
+                        |> ArrayUtil.arrayReplace2 (index - 1) a b
 
                     postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
 
@@ -608,17 +627,16 @@ module IbpTree2 =
                 elif index = node.Nodes.Length then
                     let newNodes =
                         node.Nodes
-                        |> ArrayUtil.arraySplice1 (index - 1) 1 (KeyValuePair (bMiddleKey, bLeft))
+                        |> ArrayUtil.arrayReplace1 (index - 1) (KeyValuePair (bMiddleKey, bLeft))
 
                     postDeleteFromInt None (left, IntNode (newNodes, bMiddle), right)
 
                 else
+                    let a = KeyValuePair (bMiddleKey, bLeft)
+                    let b = KeyValuePair (node.Nodes[index].Key, bMiddle)
                     let newNodes =
                         node.Nodes
-                        |> ArrayUtil.arraySpliceX (index - 1) 2 [|
-                            KeyValuePair (bMiddleKey, bLeft)
-                            KeyValuePair (node.Nodes[index].Key, bMiddle)
-                        |]
+                        |> ArrayUtil.arrayReplace2 (index - 1) a b
 
                     postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
 
@@ -629,33 +647,30 @@ module IbpTree2 =
                     postDeleteFromInt (Some bMiddleKey) (left, IntNode (newNodes, bRight), right)
 
                 elif index = node.Nodes.Length - 1 then
+                    let a = KeyValuePair (bMiddleKey, node.Nodes[index - 1].Value)
+                    let b = KeyValuePair (bRightKey, bMiddle)
                     let newNodes =
                         node.Nodes
-                        |> ArrayUtil.arraySpliceX (index - 1) 2 [|
-                            KeyValuePair (bMiddleKey, node.Nodes[index - 1].Value)
-                            KeyValuePair (bRightKey, bMiddle)
-                        |]
+                        |> ArrayUtil.arrayReplace2 (index - 1) a b
 
                     postDeleteFromInt None (left, IntNode (newNodes, bRight), right)
 
                  elif index = 0 then
+                    let a = KeyValuePair (bRightKey, bMiddle)
+                    let b = KeyValuePair (node.Nodes[index + 1].Key, bRight)
                     let newNodes =
                         node.Nodes
-                        |> ArrayUtil.arraySpliceX index 2 [|
-                            KeyValuePair (bRightKey, bMiddle)
-                            KeyValuePair (node.Nodes[index + 1].Key, bRight)
-                        |]
+                        |> ArrayUtil.arrayReplace2 index a b
 
                     postDeleteFromInt (Some bMiddleKey) (left, IntNode (newNodes, node.Last), right)
 
                 else
+                    let a = KeyValuePair (bMiddleKey, node.Nodes[index - 1].Value)
+                    let b = KeyValuePair (bRightKey, bMiddle)
+                    let c = KeyValuePair (node.Nodes[index + 1].Key, bRight)
                     let newNodes =
                         node.Nodes
-                        |> ArrayUtil.arraySpliceX (index - 1) 3 [|
-                            KeyValuePair (bMiddleKey, node.Nodes[index - 1].Value)
-                            KeyValuePair (bRightKey, bMiddle)
-                            KeyValuePair (node.Nodes[index + 1].Key, bRight)
-                        |]
+                        |> ArrayUtil.arrayReplace3 (index - 1) a b c
 
                     postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
 
