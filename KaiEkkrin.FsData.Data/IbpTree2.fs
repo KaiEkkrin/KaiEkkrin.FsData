@@ -158,45 +158,17 @@ module IbpTree2 =
             // or the index of the first node with a key less than the given one.
 
             // Finds within a range of the array between a (inclusive) and b (exclusive.)
-            // TODO this binary chop surprisingly works out slower than the simple iteration,
-            // except at B>16
-            let rec doFind a b =
-                // Match on the length of this section of the array.
-                match b - a with
-                | n when n <= 0 -> (a, false)
-                | 1 ->
+            let rec doFindIterate a b =
+                if b <= a then (a, false)
+                else
                     match Comparer.Compare (key, node.Values[a].Key) with
                     | 0 -> (a, true)
                     | n when n < 0 -> (a, false)
-                    | _ -> (b, false)
+                    | _ -> doFindIterate (a + 1) b
 
-                | 2 ->
-                    match Comparer.Compare (key, node.Values[a + 1].Key) with
-                    | 0 -> (a + 1, true)
-                    | n when n < 0 ->
-                        match Comparer.Compare (key, node.Values[a].Key) with
-                        | 0 -> (a, true)
-                        | o when o < 0 -> (a, false)
-                        | _ -> (a + 1, false)
-
-                    | _ -> (b, false)
-
-                | 3 ->
-                    match Comparer.Compare (key, node.Values[a + 1].Key) with
-                    | 0 -> (a + 1, true)
-                    | n when n < 0 ->
-                        match Comparer.Compare (key, node.Values[a].Key) with
-                        | 0 -> (a, true)
-                        | o when o < 0 -> (a, false)
-                        | _ -> (a + 1, false)
-
-                    | _ ->
-                        match Comparer.Compare (key, node.Values[a + 2].Key) with
-                        | 0 -> (a + 2, true)
-                        | o when o < 0 -> (a + 2, false)
-                        | _ -> (b, false)
-                    
-                | _ ->
+            let rec doFind a b =
+                if (b - a) < 8 then doFindIterate a b
+                else
                     let i = (a + b) / 2
                     match Comparer.Compare (key, node.Values[i].Key) with
                     | 0 -> (i, true)
@@ -209,23 +181,13 @@ module IbpTree2 =
             // The node is sorted in ascending order of keys.
             // I'm looking for the index of the first node such that the given key
             // is less than the node's key.
-            // TODO this binary chop surprisingly works out slower than the simple iteration,
-            // except at B>16
+            let rec doFindIterate a b =
+                if b <= a || Comparer.Compare (key, node.Nodes[a].Key) < 0 then a
+                else doFindIterate (a + 1) b
+
             let rec doFind a b =
-                // Match on the length of this section of the array.
-                match b - a with
-                | n when n <= 0 -> a
-                | 1 ->
-                    if Comparer.Compare (key, node.Nodes[a].Key) < 0 then a else b
-                | 2 ->
-                    if Comparer.Compare (key, node.Nodes[a + 1].Key) < 0 then
-                        if Comparer.Compare (key, node.Nodes[a].Key) < 0 then a else a + 1
-                    else b
-                | 3 ->
-                    if Comparer.Compare (key, node.Nodes[a + 1].Key) < 0 then
-                        if Comparer.Compare (key, node.Nodes[a].Key) < 0 then a else a + 1
-                    elif Comparer.Compare (key, node.Nodes[a + 2].Key) < 0 then a + 2 else b
-                | _ ->
+                if (b - a) < 16 then doFindIterate a b
+                else
                     let i = (a + b) / 2
                     if Comparer.Compare (key, node.Nodes[i].Key) < 0 then doFind a i
                     else doFind i b
