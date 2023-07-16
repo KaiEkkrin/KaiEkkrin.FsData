@@ -1,0 +1,48 @@
+|                                                     Method |     Mean |   Error |  StdDev | Ratio | RatioSD |    Gen0 |   Gen1 | Allocated | Alloc Ratio |
+|----------------------------------------------------------- |---------:|--------:|--------:|------:|--------:|--------:|-------:|----------:|------------:|
+|               'Create IbpTree2(3) from 1000 random values' | 158.6 us | 0.82 us | 0.77 us |  0.95 |    0.00 | 14.8926 | 2.1973 |    183 KB |        3.34 |
+|              'Create IbpTree2(16) from 1000 random values' | 138.6 us | 2.77 us | 2.59 us |  0.83 |    0.02 |  5.8594 | 0.4883 |  72.66 KB |        1.32 |
+|             'Create IbpTree2(128) from 1000 random values' | 132.1 us | 0.42 us | 0.39 us |  0.79 |    0.00 |  5.1270 | 0.4883 |  63.02 KB |        1.15 |
+| 'Create ImmutableSortedDictionary from 1000 random values' | 166.3 us | 0.68 us | 0.64 us |  1.00 |    0.00 |  4.3945 | 0.4883 |  54.84 KB |        1.00 |
+
+|                                                           Method |       Mean |   Error |  StdDev | Ratio |     Gen0 |     Gen1 |  Allocated | Alloc Ratio |
+|----------------------------------------------------------------- |-----------:|--------:|--------:|------:|---------:|---------:|-----------:|------------:|
+|               'Delete 1000 random values from large IbpTree2(3)' | 1,538.4 us | 8.14 us | 7.22 us |  2.23 | 208.9844 |  62.5000 | 2574.79 KB |        2.77 |
+|              'Delete 1000 random values from large IbpTree2(16)' |   815.0 us | 3.21 us | 2.84 us |  1.18 | 164.0625 |  57.6172 | 2014.74 KB |        2.16 |
+|             'Delete 1000 random values from large IbpTree2(128)' |   863.9 us | 5.43 us | 4.81 us |  1.25 | 370.1172 | 141.6016 | 4536.59 KB |        4.87 |
+| 'Delete 1000 random values from large ImmutableSortedDictionary' |   691.3 us | 1.42 us | 1.32 us |  1.00 |  75.1953 |  23.4375 |  930.87 KB |        1.00 |
+
+|                                                                 Method |      Mean |    Error |   StdDev | Ratio | RatioSD |    Gen0 | Allocated | Alloc Ratio |
+|----------------------------------------------------------------------- |----------:|---------:|---------:|------:|--------:|--------:|----------:|------------:|
+|               'Enumerate the first 1000 values from large IbpTree2(3)' | 160.72 us | 0.461 us | 0.431 us |  3.25 |    0.02 | 12.6953 |  159968 B |      512.72 |
+|              'Enumerate the first 1000 values from large IbpTree2(16)' |  52.87 us | 0.147 us | 0.130 us |  1.07 |    0.01 |  0.7324 |    9328 B |       29.90 |
+|             'Enumerate the first 1000 values from large IbpTree2(128)' |  37.11 us | 0.164 us | 0.137 us |  0.75 |    0.00 |  0.1221 |    1824 B |        5.85 |
+| 'Enumerate the first 1000 values from large ImmutableSortedDictionary' |  49.46 us | 0.199 us | 0.186 us |  1.00 |    0.00 |       - |     312 B |        1.00 |
+
+|                                                                Method |      Mean |    Error |   StdDev | Ratio | RatioSD |    Gen0 | Allocated | Alloc Ratio |
+|---------------------------------------------------------------------- |----------:|---------:|---------:|------:|--------:|--------:|----------:|------------:|
+|               'Enumerate 1000 values from within a large IbpTree2(3)' | 165.21 us | 0.968 us | 0.905 us |  2.43 |    0.02 | 12.4512 |  159009 B |      348.70 |
+|              'Enumerate 1000 values from within a large IbpTree2(16)' |  54.59 us | 0.150 us | 0.141 us |  0.80 |    0.00 |  0.6714 |    9184 B |       20.14 |
+|             'Enumerate 1000 values from within a large IbpTree2(128)' |  43.67 us | 0.123 us | 0.115 us |  0.64 |    0.00 |  0.1221 |    1744 B |        3.82 |
+| 'Enumerate 1000 values from within a large ImmutableSortedDictionary' |  67.95 us | 0.216 us | 0.202 us |  1.00 |    0.00 |       - |     456 B |        1.00 |
+
+|                                                       Method |     Mean |   Error |  StdDev | Ratio | RatioSD |   Gen0 | Allocated | Alloc Ratio |
+|------------------------------------------------------------- |---------:|--------:|--------:|------:|--------:|-------:|----------:|------------:|
+|               'Find a value from within a large IbpTree2(3)' | 635.8 ns | 7.15 ns | 6.69 ns |  3.69 |    0.08 | 0.0019 |      24 B |          NA |
+|              'Find a value from within a large IbpTree2(16)' | 382.0 ns | 5.16 ns | 4.83 ns |  2.22 |    0.06 | 0.0019 |      24 B |          NA |
+|             'Find a value from within a large IbpTree2(128)' | 258.3 ns | 2.37 ns | 2.22 ns |  1.50 |    0.04 | 0.0019 |      24 B |          NA |
+| 'Find a value from within a large ImmutableSortedDictionary' | 172.1 ns | 3.45 ns | 3.55 ns |  1.00 |    0.00 |      - |         - |          NA |
+
+|                                                           Method |     Mean |   Error |  StdDev | Ratio | RatioSD |     Gen0 |   Gen1 |  Allocated | Alloc Ratio |
+|----------------------------------------------------------------- |---------:|--------:|--------:|------:|--------:|---------:|-------:|-----------:|------------:|
+|               'Insert 1000 random values into empty IbpTree2(3)' | 405.7 us | 6.08 us | 5.69 us |  1.49 |    0.02 |  73.7305 | 9.7656 |  908.63 KB |        1.57 |
+|              'Insert 1000 random values into empty IbpTree2(16)' | 234.0 us | 1.19 us | 1.06 us |  0.86 |    0.01 |  53.9551 | 2.1973 |  663.73 KB |        1.15 |
+|             'Insert 1000 random values into empty IbpTree2(128)' | 223.5 us | 0.96 us | 0.90 us |  0.82 |    0.01 | 134.5215 | 4.3945 | 1649.33 KB |        2.85 |
+| 'Insert 1000 random values into empty ImmutableSortedDictionary' | 271.4 us | 1.69 us | 1.58 us |  1.00 |    0.00 |  46.8750 | 4.3945 |  578.21 KB |        1.00 |
+
+|                                                           Method |       Mean |    Error |   StdDev | Ratio | RatioSD |     Gen0 |     Gen1 | Allocated | Alloc Ratio |
+|----------------------------------------------------------------- |-----------:|---------:|---------:|------:|--------:|---------:|---------:|----------:|------------:|
+|               'Insert 1000 random values into large IbpTree2(3)' | 1,064.6 us |  4.51 us |  4.00 us |  1.47 |    0.01 | 169.9219 |  72.2656 |   2.04 MB |        2.03 |
+|              'Insert 1000 random values into large IbpTree2(16)' |   697.6 us |  4.97 us |  4.65 us |  0.96 |    0.01 | 141.6016 |  52.7344 |    1.7 MB |        1.69 |
+|             'Insert 1000 random values into large IbpTree2(128)' |   956.4 us | 14.24 us | 13.32 us |  1.32 |    0.02 | 384.7656 | 158.2031 |   4.62 MB |        4.60 |
+| 'Insert 1000 random values into large ImmutableSortedDictionary' |   725.1 us |  2.89 us |  2.41 us |  1.00 |    0.00 |  83.9844 |  30.2734 |      1 MB |        1.00 |
