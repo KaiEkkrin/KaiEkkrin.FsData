@@ -93,39 +93,50 @@ module ArrayUtil =
 
         // Look for a chunk size such that we don't end up with an overly-small remainder that we can't fill.
         // Emits the array of chunk sizes to use.
+        // This method is important to get good performance for tree create, so I'm going to do nasty things to it here :)
+        // TODO:
+        // - try leaving as much as possible of the array implicit?
+        // - try borrowing from the array pool?
         let rec lookForSplit sz =
             if sz < minChunkSize then
                 failwithf "Can't find a valid split for a %d length array to chunk sizes %d, %d" array.Length minChunkSize maxChunkSize
             else
                 let (fullChunks, leftover) = Math.DivRem (array.Length, sz)
-                if leftover = 0 then List.init fullChunks (fun _ -> sz)
+                if leftover = 0 then Array.create fullChunks sz
                 else
-                    let chunkSizes = List.init (fullChunks + 1) (fun i -> if i = 0 then leftover else sz)
+                    let chunkSizes = Array.init (fullChunks + 1) (fun i -> if i = 0 then leftover else sz)
                     if leftover >= minChunkSize then chunkSizes
                     else
                         // Walk through the list borrowing enough from the next item to make each item
                         // up to min size if it isn't yet. If I reach the end and I still have something
                         // left to borrow, I've failed to generate a good list.
                         // This function will also reverse the chunk size list, but that doesn't matter
-                        let (fixedSizes, remainder) =
-                            chunkSizes
-                            |> List.fold (fun (l, debt) ch ->
-                                let withoutDebt = ch - debt
-                                if withoutDebt >= minChunkSize
-                                    then (withoutDebt::l, 0)
-                                    else (minChunkSize::l, minChunkSize - withoutDebt)
-                            ) ([], 0)
+                        let mutable debt = 0
+                        let mutable index = 0
+                        while index < chunkSizes.Length && (index = 0 || debt > 0) do
+                            let withoutDebt = chunkSizes[index] - debt
+                            if withoutDebt >= minChunkSize then
+                                chunkSizes[index] <- withoutDebt
+                                debt <- 0
+                            else
+                                chunkSizes[index] <- minChunkSize
+                                debt <- minChunkSize - withoutDebt
 
-                        if remainder = 0 then fixedSizes else lookForSplit (sz - 1)
+                            index <- index + 1
+
+                        if debt = 0 then chunkSizes else lookForSplit (sz - 1)
 
         if array.Length <= maxChunkSize then [|array|]
         else
             let chunkSizes = lookForSplit maxChunkSize
-            Array.unfold (fun (i, l) ->
-                match l with
-                | sz::szs -> Some (array[i..(i + sz - 1)], (i + sz, szs))
-                | [] -> None
-            ) (0, chunkSizes)
+            let chunks = Array.zeroCreate<'T[]> chunkSizes.Length
+            let mutable arrayIndex = 0
+            for chunkIndex in 0..(chunkSizes.Length - 1) do
+                let sz = chunkSizes[chunkIndex]
+                chunks[chunkIndex] <- array[arrayIndex..(arrayIndex + sz - 1)]
+                arrayIndex <- arrayIndex + sz
+
+            chunks
 
     // Sorts in ascending order of keys (using the given comparer), and removes any duplicates
     // (leaving in the element that was originally the latest in the list)
