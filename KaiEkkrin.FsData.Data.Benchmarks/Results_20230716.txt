@@ -1,0 +1,6 @@
+|                                                                Method |      Mean |    Error |   StdDev | Ratio | RatioSD |    Gen0 | Allocated | Alloc Ratio |
+|---------------------------------------------------------------------- |----------:|---------:|---------:|------:|--------:|--------:|----------:|------------:|
+|               'Enumerate 1000 values from within a large IbpTree2(3)' | 165.21 us | 0.968 us | 0.905 us |  2.43 |    0.02 | 12.4512 |  159009 B |      348.70 |
+|              'Enumerate 1000 values from within a large IbpTree2(16)' |  54.59 us | 0.150 us | 0.141 us |  0.80 |    0.00 |  0.6714 |    9184 B |       20.14 |
+|             'Enumerate 1000 values from within a large IbpTree2(128)' |  43.67 us | 0.123 us | 0.115 us |  0.64 |    0.00 |  0.1221 |    1744 B |        3.82 |
+| 'Enumerate 1000 values from within a large ImmutableSortedDictionary' |  67.95 us | 0.216 us | 0.202 us |  1.00 |    0.00 |       - |     456 B |        1.00 |

@@ -445,14 +445,19 @@ module IbpTree2 =
                 // Only need to search the last node
                 findSeqInNode key node.Last
             else
-                // Need to search from `index`, including the last
-                Seq.append (node.Nodes[index..] |> Seq.map (fun n -> n.Value)) [|node.Last|]
-                |> Seq.collect (findSeqInNode key)
+                // Need to search from `index`, including the last.
+                seq {
+                    yield! findSeqInNode key node.Nodes[index].Value
+                    for i in (index + 1)..(node.Nodes.Length - 1) do
+                        yield! enumerateAll node.Nodes[i].Value
+
+                    yield! enumerateAll node.Last
+                }
 
         and findSeqInLeaf key node =
             match findIndexInLeaf key node with
             | struct (index, _) when index < node.Values.Length ->
-                node.Values[index..] |> Seq.ofArray
+                node.Values |> Seq.ofArray |> Seq.skip index
             | _ -> Seq.empty
 
         // ## Insert ##
