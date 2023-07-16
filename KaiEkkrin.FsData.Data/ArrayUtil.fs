@@ -94,9 +94,6 @@ module ArrayUtil =
         // Look for a chunk size such that we don't end up with an overly-small remainder that we can't fill.
         // Emits the array of chunk sizes to use.
         // This method is important to get good performance for tree create, so I'm going to do nasty things to it here :)
-        // TODO:
-        // - try leaving as much as possible of the array implicit?
-        // - try borrowing from the array pool?
         let rec lookForSplit sz =
             if sz < minChunkSize then
                 failwithf "Can't find a valid split for a %d length array to chunk sizes %d, %d" array.Length minChunkSize maxChunkSize

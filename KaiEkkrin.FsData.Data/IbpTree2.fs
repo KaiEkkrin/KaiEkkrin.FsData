@@ -76,11 +76,10 @@ module IbpTree2 =
     // or a split of it, (N1, K1, N2) where K is such that
     // Key(X) < K1 for all X in N1
     // K1 <= Key(X) for all X in N2
-    // NodeInsertion can be made [<Struct>] -- experiment?
-    // See https://www.bartoszsypytkowski.com/writing-high-performance-f-code/
     type NodeInsertion<'TKey, 'TValue> =
-        | Single of Node<'TKey, 'TValue>
-        | Split of Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>
+        | Inserted of Node<'TKey, 'TValue>
+        | Updated of Node<'TKey, 'TValue>
+        | Split of struct (Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>)
 
     // The result of doing a delete. (TODO)
     type NodeDeletion<'TKey, 'TValue> =
@@ -145,7 +144,7 @@ module IbpTree2 =
     // ## The tree data type ##
 
     type Tree<'TKey, 'TValue>(
-        B: int, Comparer: IComparer<'TKey>, Root: Node<'TKey, 'TValue>
+        B: int, Count: int, Comparer: IComparer<'TKey>, Root: Node<'TKey, 'TValue>
     ) =
         // ## Helpers ##
 
@@ -281,8 +280,12 @@ module IbpTree2 =
             if depths.Count > 1 then failwithf "At node %A, found differing depths: %A" node depths
             depths |> Seq.head
 
+        let debugCheckCount () =
+            let actualCount = enumerateAll Root |> Seq.length
+            if actualCount <> Count then Some <| sprintf "Had count property %d, actual count %d" Count actualCount else None
+
         let debugCheckDepth () =
-            // Count tree and check depth.
+            // Count tree leaf nodes and check depth.
             // See https://cs.stackexchange.com/questions/82015/maximum-depth-of-a-b-tree
             let depth = debugGetDepthNode Root
             let leafCount = debugCountLeafNodes Root
@@ -466,7 +469,7 @@ module IbpTree2 =
                 let newValues =
                     ArrayUtil.arraySplice1 index 1 (KeyValuePair(key, value)) node.Values
 
-                newValues |> LeafNode |> Leaf |> Single
+                newValues |> LeafNode |> Leaf |> Updated
 
             else
                 // Sanity check
@@ -478,7 +481,7 @@ module IbpTree2 =
                     ArrayUtil.arraySplice1 index 0 (KeyValuePair(key, value)) node.Values
 
                 if newValues.Length < B then
-                    newValues |> LeafNode |> Leaf |> Single
+                    newValues |> LeafNode |> Leaf |> Inserted
 
                 else
                     // This is too big, split it
@@ -496,16 +499,27 @@ module IbpTree2 =
                 else insertInNode key value node.Nodes[index].Value
 
             match update with
-            | Single u ->
+            | Inserted u ->
                 // This can be inserted without any resize of the current node and no change in key
                 if index = node.Nodes.Length then
-                    IntNode (node.Nodes, u) |> Int |> Single
+                    IntNode (node.Nodes, u) |> Int |> Inserted
                 else
                     let newItem = KeyValuePair(node.Nodes[index].Key, u)
                     let newNodes =
                         ArrayUtil.arraySplice1 index 1 newItem node.Nodes
 
-                    IntNode (newNodes, node.Last) |> Int |> Single
+                    IntNode (newNodes, node.Last) |> Int |> Inserted
+
+            | Updated u ->
+                // Basically the same case as the previous one
+                if index = node.Nodes.Length then
+                    IntNode (node.Nodes, u) |> Int |> Updated
+                else
+                    let newItem = KeyValuePair(node.Nodes[index].Key, u)
+                    let newNodes =
+                        ArrayUtil.arraySplice1 index 1 newItem node.Nodes
+
+                    IntNode (newNodes, node.Last) |> Int |> Updated
 
             | Split (head, tailKey, tail) ->
                 // Sanity check
@@ -537,7 +551,7 @@ module IbpTree2 =
 
                 if updated.Nodes.Length < B then
                     // No further splitting is required
-                    updated |> Int |> Single
+                    updated |> Int |> Inserted
 
                 else
                     // This is too big, split it.
@@ -805,27 +819,30 @@ module IbpTree2 =
         // ## Public methods ##
 
         member this.DebugValidate () =
-            match debugCheckDepth () with
+            match debugCheckCount () with
             | Some err -> Some err
             | None ->
-                match debugCheckIntKeys () with
+                match debugCheckDepth () with
                 | Some err -> Some err
                 | None ->
-                    match debugCheckWidthsNode (Some 0) Root with
+                    match debugCheckIntKeys () with
                     | Some err -> Some err
                     | None ->
-                        match debugValidateNode Root with
-                        | NotValid err -> Some err
-                        | _ -> None
+                        match debugCheckWidthsNode (Some 0) Root with
+                        | Some err -> Some err
+                        | None ->
+                            match debugValidateNode Root with
+                            | NotValid err -> Some err
+                            | _ -> None
 
         member this.Delete key =
             match deleteFromNode key (None, Root, None) with
             | NotPresent -> this
             | Kept (_, Int intNode) when intNode.Nodes.Length = 0 ->
                 // Reduce the height of the tree by 1
-                Tree (B, Comparer, intNode.Last)
-            | Kept (_, node) -> Tree (B, Comparer, node)
-            | Deleted -> Tree (B, Comparer, [||] |> LeafNode |> Leaf)
+                Tree (B, Count - 1, Comparer, intNode.Last)
+            | Kept (_, node) -> Tree (B, Count - 1, Comparer, node)
+            | Deleted -> Tree (B, Count - 1, Comparer, [||] |> LeafNode |> Leaf)
             | _ -> failwith "Unhandled delete case" // TODO ??? -- need to deal with replacing the root node with a lower one.
 
         member this.EnumerateFrom key = findSeqInNode key Root
@@ -834,14 +851,12 @@ module IbpTree2 =
 
         member this.Insert key value =
             match insertInNode key value Root with
-            | Single u ->
-                // This forms the updated root node
-                Tree(B, Comparer, u)
-
+            | Inserted u -> Tree(B, Count + 1, Comparer, u)
+            | Updated u -> Tree(B, Count, Comparer, u)
             | Split (head, tailKey, tail) ->
                 // Generate a new root node out of this split:
                 let newRoot = IntNode ([|KeyValuePair(tailKey, head)|], tail) |> Int
-                Tree(B, Comparer, newRoot)
+                Tree(B, Count + 1, Comparer, newRoot)
 
         member this.TryFind key = findInNode key Root
 
@@ -860,7 +875,7 @@ module IbpTree2 =
                 | 1 -> creations[0].Node
                 | _ -> (creationsToIntNode creations).Node
 
-            Tree (b, cmp, root)
+            Tree (b, valuesArray.Length, cmp, root)
 
         override this.ToString () =
             // Debug print
@@ -881,11 +896,11 @@ module IbpTree2 =
     let bValueFor<'T> = Math.Max (3, 64_000 / sizeof<'T>)
 
     let create<'TKey, 'TValue> cmp =
-        new Tree<'TKey, 'TValue>(bValueFor<'TKey>, cmp, LeafNode [||] |> Leaf)
+        new Tree<'TKey, 'TValue>(bValueFor<'TKey>, 0, cmp, LeafNode [||] |> Leaf)
 
     let createB<'TKey, 'TValue> (b, cmp) =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
-        new Tree<'TKey, 'TValue>(b, cmp, LeafNode [||] |> Leaf)
+        new Tree<'TKey, 'TValue>(b, 0, cmp, LeafNode [||] |> Leaf)
 
     let createFrom<'TKey, 'TValue> (cmp, eqCmp, values) =
         Tree<'TKey, 'TValue>.CreateFrom (bValueFor<'TKey>, cmp, eqCmp, values)
@@ -895,11 +910,11 @@ module IbpTree2 =
         Tree<'TKey, 'TValue>.CreateFrom (b, cmp, eqCmp, values)
 
     let empty<'TKey, 'TValue> =
-        new Tree<'TKey, 'TValue>(bValueFor<'TKey>, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
+        new Tree<'TKey, 'TValue>(bValueFor<'TKey>, 0, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
 
     let emptyB<'TKey, 'TValue> b =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
-        new Tree<'TKey, 'TValue>(b, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
+        new Tree<'TKey, 'TValue>(b, 0, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
 
     let debugValidate<'TKey, 'TValue> (tree: Tree<'TKey, 'TValue>) =
         tree.DebugValidate ()
