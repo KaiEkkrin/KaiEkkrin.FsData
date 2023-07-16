@@ -195,12 +195,22 @@ module IbpTree2 =
 
         // ## Enumerate all key-value pairs in order ##
 
-        let rec enumerateAll node =
-            match node with
-            | Int intNode -> enumerateAllInt intNode
-            | Leaf leafNode -> leafNode.Values |> Seq.ofArray
+        let rec enumerateAll node = seq {
+            let stack = Stack< Node<'TKey, 'TValue> >()
+            stack.Push node
+            let mutable n = node
+            while stack.TryPop &n do
+                match n with
+                | Int intNode ->
+                    stack.EnsureCapacity (stack.Count + intNode.Nodes.Length + 1) |> ignore
+                    stack.Push intNode.Last
+                    let mutable i = intNode.Nodes.Length - 1
+                    while i >= 0 do
+                        stack.Push intNode.Nodes[i].Value
+                        i <- i - 1
 
-        and enumerateAllInt node = childrenOfInt node |> Seq.collect enumerateAll
+                | Leaf leafNode -> yield! leafNode.Values |> Seq.ofArray
+        }
 
         // ## Debug: check widths ##
 

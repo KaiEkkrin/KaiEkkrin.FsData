@@ -12,12 +12,19 @@
 |             'Delete 1000 random values from large IbpTree2(128)' |   863.9 us | 5.43 us | 4.81 us |  1.25 | 370.1172 | 141.6016 | 4536.59 KB |        4.87 |
 | 'Delete 1000 random values from large ImmutableSortedDictionary' |   691.3 us | 1.42 us | 1.32 us |  1.00 |  75.1953 |  23.4375 |  930.87 KB |        1.00 |
 
-|                                                                 Method |      Mean |    Error |   StdDev | Ratio | RatioSD |    Gen0 | Allocated | Alloc Ratio |
-|----------------------------------------------------------------------- |----------:|---------:|---------:|------:|--------:|--------:|----------:|------------:|
-|               'Enumerate the first 1000 values from large IbpTree2(3)' | 160.72 us | 0.461 us | 0.431 us |  3.25 |    0.02 | 12.6953 |  159968 B |      512.72 |
-|              'Enumerate the first 1000 values from large IbpTree2(16)' |  52.87 us | 0.147 us | 0.130 us |  1.07 |    0.01 |  0.7324 |    9328 B |       29.90 |
-|             'Enumerate the first 1000 values from large IbpTree2(128)' |  37.11 us | 0.164 us | 0.137 us |  0.75 |    0.00 |  0.1221 |    1824 B |        5.85 |
-| 'Enumerate the first 1000 values from large ImmutableSortedDictionary' |  49.46 us | 0.199 us | 0.186 us |  1.00 |    0.00 |       - |     312 B |        1.00 |
+|                                                      Method |     Mean |     Error |    StdDev | Ratio |     Gen0 | Allocated | Alloc Ratio |
+|------------------------------------------------------------ |---------:|----------:|----------:|------:|---------:|----------:|------------:|
+|               'Enumerate all values from large IbpTree2(3)' | 3.647 ms | 0.0276 ms | 0.0258 ms |  0.91 | 363.2813 | 4600882 B |   75,424.30 |
+|              'Enumerate all values from large IbpTree2(16)' | 1.883 ms | 0.0080 ms | 0.0074 ms |  0.47 |  42.9688 |  545121 B |    8,936.41 |
+|             'Enumerate all values from large IbpTree2(128)' | 1.629 ms | 0.0118 ms | 0.0110 ms |  0.41 |   3.9063 |   65337 B |    1,071.10 |
+| 'Enumerate all values from large ImmutableSortedDictionary' | 3.989 ms | 0.0272 ms | 0.0254 ms |  1.00 |        - |      61 B |        1.00 |
+
+|                                                                 Method |     Mean |    Error |   StdDev | Ratio |   Gen0 | Allocated | Alloc Ratio |
+|----------------------------------------------------------------------- |---------:|---------:|---------:|------:|-------:|----------:|------------:|
+|               'Enumerate the first 1000 values from large IbpTree2(3)' | 48.93 us | 0.226 us | 0.211 us |  1.05 | 3.7231 |   47256 B |      151.46 |
+|              'Enumerate the first 1000 values from large IbpTree2(16)' | 32.65 us | 0.127 us | 0.119 us |  0.70 | 0.4883 |    6840 B |       21.92 |
+|             'Enumerate the first 1000 values from large IbpTree2(128)' | 30.65 us | 0.124 us | 0.116 us |  0.66 | 0.1526 |    1984 B |        6.36 |
+| 'Enumerate the first 1000 values from large ImmutableSortedDictionary' | 46.75 us | 0.090 us | 0.084 us |  1.00 |      - |     312 B |        1.00 |
 
 |                                                                Method |      Mean |    Error |   StdDev | Ratio | RatioSD |    Gen0 | Allocated | Alloc Ratio |
 |---------------------------------------------------------------------- |----------:|---------:|---------:|------:|--------:|--------:|----------:|------------:|

@@ -125,6 +125,24 @@ type TreeDelete() =
         randomKeysToDelete |> Array.fold (fun (t: ImmutableSortedDictionary<string, TestValue>) k -> t.Remove k) largeIsd
 
 [<MemoryDiagnoser>]
+type TreeEnumerateAll() =
+    [<Benchmark(Description = "Enumerate all values from large IbpTree2(3)")>]
+    member this.EnumerateAllLargeIbp3() =
+        largeTree3 |> Seq.last
+
+    [<Benchmark(Description = "Enumerate all values from large IbpTree2(16)")>]
+    member this.EnumerateAllLargeIbp16() =
+        largeTree16 |> Seq.last
+
+    [<Benchmark(Description = "Enumerate all values from large IbpTree2(128)")>]
+    member this.EnumerateAllLargeIbp128() =
+        largeTree128 |> Seq.last
+
+    [<Benchmark(Description = "Enumerate all values from large ImmutableSortedDictionary", Baseline = true)>]
+    member this.EnumerateAllLargeIsd() =
+        largeIsd |> Seq.last
+
+[<MemoryDiagnoser>]
 type TreeEnumerateFirst() =
     [<Benchmark(Description = "Enumerate the first 1000 values from large IbpTree2(3)")>]
     member this.EnumerateStartLargeIbp3() =
