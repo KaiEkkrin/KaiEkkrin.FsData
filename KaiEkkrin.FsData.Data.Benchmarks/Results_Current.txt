@@ -14,10 +14,10 @@
 
 |                                                      Method |     Mean |     Error |    StdDev | Ratio |     Gen0 | Allocated | Alloc Ratio |
 |------------------------------------------------------------ |---------:|----------:|----------:|------:|---------:|----------:|------------:|
-|               'Enumerate all values from large IbpTree2(3)' | 3.647 ms | 0.0276 ms | 0.0258 ms |  0.91 | 363.2813 | 4600882 B |   75,424.30 |
-|              'Enumerate all values from large IbpTree2(16)' | 1.883 ms | 0.0080 ms | 0.0074 ms |  0.47 |  42.9688 |  545121 B |    8,936.41 |
-|             'Enumerate all values from large IbpTree2(128)' | 1.629 ms | 0.0118 ms | 0.0110 ms |  0.41 |   3.9063 |   65337 B |    1,071.10 |
-| 'Enumerate all values from large ImmutableSortedDictionary' | 3.989 ms | 0.0272 ms | 0.0254 ms |  1.00 |        - |      61 B |        1.00 |
+|               'Enumerate all values from large IbpTree2(3)' | 3.222 ms | 0.0254 ms | 0.0237 ms |  0.81 | 171.8750 | 2200330 B |   36,070.98 |
+|              'Enumerate all values from large IbpTree2(16)' | 1.802 ms | 0.0087 ms | 0.0081 ms |  0.45 |  17.5781 |  224329 B |    3,677.52 |
+|             'Enumerate all values from large IbpTree2(128)' | 1.635 ms | 0.0083 ms | 0.0078 ms |  0.41 |   1.9531 |   25665 B |      420.74 |
+| 'Enumerate all values from large ImmutableSortedDictionary' | 3.975 ms | 0.0177 ms | 0.0166 ms |  1.00 |        - |      61 B |        1.00 |
 
 |                                                                 Method |     Mean |    Error |   StdDev | Ratio |   Gen0 | Allocated | Alloc Ratio |
 |----------------------------------------------------------------------- |---------:|---------:|---------:|------:|-------:|----------:|------------:|

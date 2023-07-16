@@ -1,6 +1,7 @@
 namespace KaiEkkrin.FsData.Data
 
 open System
+open System.Collections.Concurrent
 open System.Collections.Generic
 open System.Text
 
@@ -141,6 +142,12 @@ module IbpTree2 =
 
             createSubtreeRec leafNodes
 
+    // ## Enumeration stacks ##
+
+    type IStackLease<'TKey, 'TValue> =
+        abstract member Stack: Stack< Node<'TKey, 'TValue> >
+        inherit IDisposable
+
     // ## The tree data type ##
 
     type Tree<'TKey, 'TValue>(
@@ -193,10 +200,27 @@ module IbpTree2 =
 
             doFind 0 node.Nodes.Length
 
+        // The stack structure allocation used for enumeration etc -- I want to recycle these for
+        // better performance
+
+        static let nodeStacks = new BlockingCollection< Stack< Node<'TKey, 'TValue> > >()
+
+        let borrowNodeStack () =
+            let stack =
+                match nodeStacks.TryTake () with
+                | (true, st) -> st
+                | (false, _) -> Stack< Node<'TKey, 'TValue> >()
+
+            { new IStackLease<'TKey, 'TValue> with
+                member this.Stack = stack
+                member this.Dispose () = nodeStacks.Add stack
+            }
+
         // ## Enumerate all key-value pairs in order ##
 
         let rec enumerateAll node = seq {
-            let stack = Stack< Node<'TKey, 'TValue> >()
+            use lease = borrowNodeStack ()
+            let stack = lease.Stack
             stack.Push node
             let mutable n = node
             while stack.TryPop &n do
@@ -209,7 +233,8 @@ module IbpTree2 =
                         stack.Push intNode.Nodes[i].Value
                         i <- i - 1
 
-                | Leaf leafNode -> yield! leafNode.Values |> Seq.ofArray
+                | Leaf leafNode ->
+                    for value in leafNode.Values do yield value
         }
 
         // ## Debug: check widths ##
