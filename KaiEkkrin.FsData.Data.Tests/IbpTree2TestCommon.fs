@@ -31,7 +31,7 @@ let buildTreeWithDebug (output: ITestOutputHelper) (b, keys) =
 
 let createTreeWithDebug (output: ITestOutputHelper) (b, keys) =
     let keyValues = keys |> Seq.map (fun k -> KeyValuePair(k, sprintf "%d" k))
-    let tree = IbpTree2.createFromB (b, Comparer<int>.Default, EqualityComparer<int>.Default, keyValues)
+    let tree = IbpTree2.createFromB b Comparer<int>.Default EqualityComparer<int>.Default keyValues
     output.WriteLine <| tree.ToString ()
 
     match IbpTree2.debugValidate tree with

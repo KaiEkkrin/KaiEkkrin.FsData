@@ -21,7 +21,7 @@ type PropertyTests(output: ITestOutputHelper) =
         }
 
         Prop.forAll arb <| fun (b, key) ->
-            let emptyTree = IbpTree2.createFromB<int, string>(b, Comparer<int>.Default, EqualityComparer<int>.Default, Seq.empty)
+            let emptyTree = IbpTree2.createFromB<int, string> b Comparer<int>.Default EqualityComparer<int>.Default Seq.empty
             let x = IbpTree2.tryFind key emptyTree
             x |> should equal None
 
@@ -38,7 +38,7 @@ type PropertyTests(output: ITestOutputHelper) =
         }
 
         Prop.forAll arb <| fun (b, key, nonMatchingKey) ->
-            let tree = IbpTree2.createFromB<int, string>(b, Comparer<int>.Default, EqualityComparer<int>.Default, [|KeyValuePair(key, "A")|])
+            let tree = IbpTree2.createFromB<int, string> b Comparer<int>.Default EqualityComparer<int>.Default [|KeyValuePair(key, "A")|]
             let found = IbpTree2.tryFind key tree
             found |> should equal (Some "A")
 

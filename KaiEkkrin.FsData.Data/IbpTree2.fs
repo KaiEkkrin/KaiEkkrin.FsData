@@ -84,11 +84,11 @@ module IbpTree2 =
     // The result of doing a delete. (TODO)
     type NodeDeletion<'TKey, 'TValue> =
         | NotPresent // key not found in leaf; nothing to delete
-        | Kept of 'TKey * Node<'TKey, 'TValue> // the node, updated but not merged, with its new min key
-        | BorrowedLeft of Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue> // borrowed from the left -- left min key can't have changed
-        | BorrowedRight of 'TKey * Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue> // borrowed from the right -- right min key may have changed
+        | Kept of struct ('TKey * Node<'TKey, 'TValue>) // the node, updated but not merged, with its new min key
+        | BorrowedLeft of struct (Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>) // borrowed from the left -- left min key can't have changed
+        | BorrowedRight of struct ('TKey * Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>) // borrowed from the right -- right min key may have changed
         | MergedLeft of Node<'TKey, 'TValue> // merged to the left -- min key is as the left sibling's
-        | MergedRight of 'TKey * Node<'TKey, 'TValue> // merged to the right -- min key may have changed
+        | MergedRight of struct ('TKey * Node<'TKey, 'TValue>) // merged to the right -- min key may have changed
         | Deleted // the node is gone completely
 
     // The result of validating a node.
@@ -862,7 +862,7 @@ module IbpTree2 =
 
         // TODO test this. I think I'll need the logic inside for implementing delete properly;
         // also it's useful in its own right
-        static member CreateFrom (b, cmp: IComparer<'TKey>, eqCmp: IEqualityComparer<'TKey>, values: KeyValuePair<'TKey, 'TValue> seq) =
+        static member CreateFrom b (cmp: IComparer<'TKey>) (eqCmp: IEqualityComparer<'TKey>) (values: KeyValuePair<'TKey, 'TValue> seq) =
             // Suspicion section: make sure that the values are sorted in order of the
             // given comparer, and remove any with duplicate keys
             let valuesArray = ArrayUtil.sortedAndDistinct cmp eqCmp values
@@ -898,16 +898,16 @@ module IbpTree2 =
     let create<'TKey, 'TValue> cmp =
         new Tree<'TKey, 'TValue>(bValueFor<'TKey>, 0, cmp, LeafNode [||] |> Leaf)
 
-    let createB<'TKey, 'TValue> (b, cmp) =
+    let createB<'TKey, 'TValue> b cmp =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
         new Tree<'TKey, 'TValue>(b, 0, cmp, LeafNode [||] |> Leaf)
 
-    let createFrom<'TKey, 'TValue> (cmp, eqCmp, values) =
-        Tree<'TKey, 'TValue>.CreateFrom (bValueFor<'TKey>, cmp, eqCmp, values)
+    let createFrom<'TKey, 'TValue> cmp eqCmp values =
+        Tree<'TKey, 'TValue>.CreateFrom bValueFor<'TKey> cmp eqCmp values
 
-    let createFromB<'TKey, 'TValue> (b, cmp, eqCmp, values) =
+    let createFromB<'TKey, 'TValue> b cmp eqCmp values =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
-        Tree<'TKey, 'TValue>.CreateFrom (b, cmp, eqCmp, values)
+        Tree<'TKey, 'TValue>.CreateFrom b cmp eqCmp values
 
     let empty<'TKey, 'TValue> =
         new Tree<'TKey, 'TValue>(bValueFor<'TKey>, 0, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)

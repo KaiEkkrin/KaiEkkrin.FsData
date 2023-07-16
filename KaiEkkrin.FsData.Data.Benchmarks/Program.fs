@@ -33,9 +33,9 @@ let randomKeysToDelete = Array.init 1000 <| fun i ->
     let index = random.Next (0, 99_999)
     lotsMoreRandomKeyValues[index].Key
     
-let largeTree3 = IbpTree2.createFromB (3, StringComparer.Ordinal, StringComparer.Ordinal, lotsMoreRandomKeyValues)
-let largeTree16 = IbpTree2.createFromB (16, StringComparer.Ordinal, StringComparer.Ordinal, lotsMoreRandomKeyValues)
-let largeTree128 = IbpTree2.createFromB (128, StringComparer.Ordinal, StringComparer.Ordinal, lotsMoreRandomKeyValues)
+let largeTree3 = IbpTree2.createFromB 3 StringComparer.Ordinal StringComparer.Ordinal lotsMoreRandomKeyValues
+let largeTree16 = IbpTree2.createFromB 16 StringComparer.Ordinal StringComparer.Ordinal lotsMoreRandomKeyValues
+let largeTree128 = IbpTree2.createFromB 128 StringComparer.Ordinal StringComparer.Ordinal lotsMoreRandomKeyValues
 
 let largeIsd =
     let builder = ImmutableSortedDictionary<string, TestValue>.Empty.WithComparers(StringComparer.Ordinal).ToBuilder()
@@ -48,15 +48,15 @@ let largeIsd =
 type TreeCreate() =
     [<Benchmark(Description = "Create IbpTree2(3) from 1000 random values")>]
     member this.CreateIbp3() =
-        IbpTree2.createFromB (3, StringComparer.Ordinal, StringComparer.Ordinal, randomKeyValues)
+        IbpTree2.createFromB 3 StringComparer.Ordinal StringComparer.Ordinal randomKeyValues
 
     [<Benchmark(Description = "Create IbpTree2(16) from 1000 random values")>]
     member this.CreateIbp16() =
-        IbpTree2.createFromB (16, StringComparer.Ordinal, StringComparer.Ordinal, randomKeyValues)
+        IbpTree2.createFromB 16 StringComparer.Ordinal StringComparer.Ordinal randomKeyValues
 
     [<Benchmark(Description = "Create IbpTree2(128) from 1000 random values")>]
     member this.CreateIbp128() =
-        IbpTree2.createFromB (128, StringComparer.Ordinal, StringComparer.Ordinal, randomKeyValues)
+        IbpTree2.createFromB 128 StringComparer.Ordinal StringComparer.Ordinal randomKeyValues
 
     [<Benchmark(Description = "Create ImmutableSortedDictionary from 1000 random values", Baseline = true)>]
     member this.CreateIsd() =
@@ -70,17 +70,17 @@ type TreeCreate() =
 type TreeInsertEmpty() =
     [<Benchmark(Description = "Insert 1000 random values into empty IbpTree2(3)")>]
     member this.InsertEmptyIbp3() =
-        let emptyTree = IbpTree2.createB (3, StringComparer.Ordinal)
+        let emptyTree = IbpTree2.createB 3 StringComparer.Ordinal
         randomKeyValues |> Array.fold (fun t kv -> IbpTree2.insert kv.Key kv.Value t) emptyTree
 
     [<Benchmark(Description = "Insert 1000 random values into empty IbpTree2(16)")>]
     member this.InsertEmptyIbp16() =
-        let emptyTree = IbpTree2.createB (16, StringComparer.Ordinal)
+        let emptyTree = IbpTree2.createB 16 StringComparer.Ordinal
         randomKeyValues |> Array.fold (fun t kv -> IbpTree2.insert kv.Key kv.Value t) emptyTree
 
     [<Benchmark(Description = "Insert 1000 random values into empty IbpTree2(128)")>]
     member this.InsertEmptyIbp128() =
-        let emptyTree = IbpTree2.createB (128, StringComparer.Ordinal)
+        let emptyTree = IbpTree2.createB 128 StringComparer.Ordinal
         randomKeyValues |> Array.fold (fun t kv -> IbpTree2.insert kv.Key kv.Value t) emptyTree
 
     [<Benchmark(Description = "Insert 1000 random values into empty ImmutableSortedDictionary", Baseline = true)>]
