@@ -3,19 +3,18 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "KaiEkkrin.FsData.Data", "KaiEkkrin.FsData.Data\KaiEkkrin.FsData.Data.fsproj", "{2C90207A-A681-44C0-B25B-6B34160795DA}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "KaiEkkrin.FsData.Data", "KaiEkkrin.FsData.Data\KaiEkkrin.FsData.Data.fsproj", "{2C90207A-A681-44C0-B25B-6B34160795DA}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "KaiEkkrin.FsData.Data.Tests", "KaiEkkrin.FsData.Data.Tests\KaiEkkrin.FsData.Data.Tests.fsproj", "{8C6C81B2-F3F1-4A56-8093-D33721877664}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "KaiEkkrin.FsData.Data.Tests", "KaiEkkrin.FsData.Data.Tests\KaiEkkrin.FsData.Data.Tests.fsproj", "{8C6C81B2-F3F1-4A56-8093-D33721877664}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "KaiEkkrin.FsData.Data.Benchmarks", "KaiEkkrin.FsData.Data.Benchmarks\KaiEkkrin.FsData.Data.Benchmarks.fsproj", "{49AA5AEB-9F44-4FF1-8546-69DECDE134C0}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "KaiEkkrin.FsData.Data.Benchmarks", "KaiEkkrin.FsData.Data.Benchmarks\KaiEkkrin.FsData.Data.Benchmarks.fsproj", "{49AA5AEB-9F44-4FF1-8546-69DECDE134C0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KaiEkkrin.FsData.Core", "KaiEkkrin.FsData.Core\KaiEkkrin.FsData.Core.csproj", "{C701B8C1-F689-4263-954A-480FC20F6C4A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{2C90207A-A681-44C0-B25B-6B34160795DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -30,5 +29,15 @@ Global
 		{49AA5AEB-9F44-4FF1-8546-69DECDE134C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{49AA5AEB-9F44-4FF1-8546-69DECDE134C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{49AA5AEB-9F44-4FF1-8546-69DECDE134C0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C701B8C1-F689-4263-954A-480FC20F6C4A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C701B8C1-F689-4263-954A-480FC20F6C4A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C701B8C1-F689-4263-954A-480FC20F6C4A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C701B8C1-F689-4263-954A-480FC20F6C4A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {CAACEA9B-7432-484B-813F-A8EEE7DF1AC6}
 	EndGlobalSection
 EndGlobal
