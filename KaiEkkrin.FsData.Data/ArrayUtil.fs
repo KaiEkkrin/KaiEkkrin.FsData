@@ -4,27 +4,6 @@ open System
 open System.Collections.Generic
 
 module ArrayUtil =
-    // Makes a copy of the array with one item replaced.
-    let arrayReplace1<'T> index newItem (array: 'T []) =
-        let newArray = array.Clone() :?> 'T []
-        newArray[index] <- newItem
-        newArray
-
-    // Makes a copy of the array with two items replaced.
-    let arrayReplace2<'T> index a b (array: 'T []) =
-        let newArray = array.Clone() :?> 'T []
-        newArray[index] <- a
-        newArray[index + 1] <- b
-        newArray
-
-    // Makes a copy of the array with two items replaced.
-    let arrayReplace3<'T> index a b c (array: 'T []) =
-        let newArray = array.Clone() :?> 'T []
-        newArray[index] <- a
-        newArray[index + 1] <- b
-        newArray[index + 2] <- c
-        newArray
-
     // Deletes `deleteCount` items from the array at the index and
     // inserts `newItem` there.
     let arraySplice1<'T> index deleteCount newItem (array: 'T []) =
