@@ -81,7 +81,7 @@ module IbpTree2 =
         | Updated of Node<'TKey, 'TValue>
         | Split of struct (Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>)
 
-    // The result of doing a delete. (TODO)
+    // The result of doing a delete.
     type NodeDeletion<'TKey, 'TValue> =
         | NotPresent // key not found in leaf; nothing to delete
         | Kept of struct ('TKey * Node<'TKey, 'TValue>) // the node, updated but not merged, with its new min key
@@ -843,7 +843,7 @@ module IbpTree2 =
                 Tree (B, Count - 1, Comparer, intNode.Last)
             | Kept (_, node) -> Tree (B, Count - 1, Comparer, node)
             | Deleted -> Tree (B, Count - 1, Comparer, [||] |> LeafNode |> Leaf)
-            | _ -> failwith "Unhandled delete case" // TODO ??? -- need to deal with replacing the root node with a lower one.
+            | _ -> failwith "Unhandled delete case" // shouldn't reach this
 
         member this.EnumerateFrom key = findSeqInNode key Root
 
