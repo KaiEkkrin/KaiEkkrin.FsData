@@ -420,7 +420,7 @@ module IbpTree2 =
 
         and findInLeaf key node =
             match findIndexInLeaf key node with
-            | struct (index, true) -> Some node.Values[index].Value
+            | (index, true) -> Some node.Values[index].Value
             | _ -> None
 
         // ## First item (lowest) ##
