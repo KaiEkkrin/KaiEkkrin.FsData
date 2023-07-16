@@ -847,10 +847,10 @@ module IbpTree2 =
 
         // TODO test this. I think I'll need the logic inside for implementing delete properly;
         // also it's useful in its own right
-        static member CreateFrom (b, cmp: IComparer<'TKey>, values: KeyValuePair<'TKey, 'TValue> seq) =
+        static member CreateFrom (b, cmp: IComparer<'TKey>, eqCmp: IEqualityComparer<'TKey>, values: KeyValuePair<'TKey, 'TValue> seq) =
             // Suspicion section: make sure that the values are sorted in order of the
             // given comparer, and remove any with duplicate keys
-            let valuesArray = ArrayUtil.sortedAndDistinct cmp values
+            let valuesArray = ArrayUtil.sortedAndDistinct cmp eqCmp values
 
             // Make a suitable root for the tree
             let creations = createSubtree b valuesArray
@@ -887,12 +887,12 @@ module IbpTree2 =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
         new Tree<'TKey, 'TValue>(b, cmp, LeafNode [||] |> Leaf)
 
-    let createFrom<'TKey, 'TValue> (cmp, values) =
-        Tree<'TKey, 'TValue>.CreateFrom (bValueFor<'TKey>, cmp, values)
+    let createFrom<'TKey, 'TValue> (cmp, eqCmp, values) =
+        Tree<'TKey, 'TValue>.CreateFrom (bValueFor<'TKey>, cmp, eqCmp, values)
 
-    let createFromB<'TKey, 'TValue> (b, cmp, values) =
+    let createFromB<'TKey, 'TValue> (b, cmp, eqCmp, values) =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
-        Tree<'TKey, 'TValue>.CreateFrom (b, cmp, values)
+        Tree<'TKey, 'TValue>.CreateFrom (b, cmp, eqCmp, values)
 
     let empty<'TKey, 'TValue> =
         new Tree<'TKey, 'TValue>(bValueFor<'TKey>, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)

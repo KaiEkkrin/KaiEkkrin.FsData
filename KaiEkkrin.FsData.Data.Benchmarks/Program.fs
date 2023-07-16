@@ -33,9 +33,9 @@ let randomKeysToDelete = Array.init 1000 <| fun i ->
     let index = random.Next (0, 99_999)
     lotsMoreRandomKeyValues[index].Key
     
-let largeTree3 = IbpTree2.createFromB (3, StringComparer.Ordinal, lotsMoreRandomKeyValues)
-let largeTree16 = IbpTree2.createFromB (16, StringComparer.Ordinal, lotsMoreRandomKeyValues)
-let largeTree128 = IbpTree2.createFromB (128, StringComparer.Ordinal, lotsMoreRandomKeyValues)
+let largeTree3 = IbpTree2.createFromB (3, StringComparer.Ordinal, StringComparer.Ordinal, lotsMoreRandomKeyValues)
+let largeTree16 = IbpTree2.createFromB (16, StringComparer.Ordinal, StringComparer.Ordinal, lotsMoreRandomKeyValues)
+let largeTree128 = IbpTree2.createFromB (128, StringComparer.Ordinal, StringComparer.Ordinal, lotsMoreRandomKeyValues)
 
 let largeIsd =
     let builder = ImmutableSortedDictionary<string, TestValue>.Empty.WithComparers(StringComparer.Ordinal).ToBuilder()
@@ -48,15 +48,15 @@ let largeIsd =
 type TreeCreate() =
     [<Benchmark(Description = "Create IbpTree2(3) from 1000 random values")>]
     member this.CreateIbp3() =
-        IbpTree2.createFromB (3, StringComparer.Ordinal, randomKeyValues)
+        IbpTree2.createFromB (3, StringComparer.Ordinal, StringComparer.Ordinal, randomKeyValues)
 
     [<Benchmark(Description = "Create IbpTree2(16) from 1000 random values")>]
     member this.CreateIbp16() =
-        IbpTree2.createFromB (16, StringComparer.Ordinal, randomKeyValues)
+        IbpTree2.createFromB (16, StringComparer.Ordinal, StringComparer.Ordinal, randomKeyValues)
 
     [<Benchmark(Description = "Create IbpTree2(128) from 1000 random values")>]
     member this.CreateIbp128() =
-        IbpTree2.createFromB (128, StringComparer.Ordinal, randomKeyValues)
+        IbpTree2.createFromB (128, StringComparer.Ordinal, StringComparer.Ordinal, randomKeyValues)
 
     [<Benchmark(Description = "Create ImmutableSortedDictionary from 1000 random values", Baseline = true)>]
     member this.CreateIsd() =

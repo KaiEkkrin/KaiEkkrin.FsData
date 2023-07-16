@@ -131,19 +131,20 @@ module ArrayUtil =
     // (leaving in the element that was originally the latest in the list)
     // resulting in output that can go through tree creation safely.
     // Probably a bit slow. Hopefully not outrageously so
-    let sortedAndDistinct<'TKey, 'TValue> (cmp: IComparer<'TKey>) (sequence: KeyValuePair<'TKey, 'TValue> seq) =
-        // Make an array including the original indexes: this will let us correctly
-        // choose the item to keep when we find several with the same key.
-        let indexed = sequence |> Seq.mapi (fun i kv -> Common.IndexedKeyValuePair(i, kv)) |> Array.ofSeq
+    let sortedAndDistinct<'TKey, 'TValue> (cmp: IComparer<'TKey>) (eqCmp: IEqualityComparer<'TKey>) (sequence: KeyValuePair<'TKey, 'TValue> seq) =
+        // This should get rid of old values for duplicate keys quickly
+        let dictionary =
+            match sequence with
+            | :? IReadOnlyCollection<KeyValuePair<'TKey, 'TValue> > as collection ->
+                Dictionary<'TKey, 'TValue>(collection.Count, eqCmp)
+            | _ -> Dictionary<'TKey, 'TValue>(eqCmp)
 
-        // Sort that in order of keys (ascending) then indexes (descending)
-        Array.Sort (array = indexed, comparer = Common.IndexedKeyValuePairKeyComparer(cmp))
+        for kv in sequence do
+            dictionary[kv.Key] <- kv.Value
 
-        // We can generate the correct distinct array now by dropping each element that has
-        // the same key as the previous one
-        [|
-            for i = 0 to (indexed.Length - 1) do
-                if i = 0 || cmp.Compare (indexed[i - 1].Key, indexed[i].Key) <> 0 then
-                    yield indexed[i].KeyValue
-        |]
+        // Create and sort the array
+        let array = Array.zeroCreate<KeyValuePair<'TKey, 'TValue> >(dictionary.Count)
+        dictionary |> Seq.iteri (fun i kv -> array[i] <- kv)
+        array |> Array.sortInPlaceWith (fun a b -> cmp.Compare (a.Key, b.Key)) |> ignore
+        array
 

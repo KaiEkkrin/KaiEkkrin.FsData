@@ -298,7 +298,7 @@ type Tests(output: ITestOutputHelper) =
         let arb = Arb.fromGen <| genDistinctKeyValues
         Prop.forAll arb <| fun array ->
             let expected = array |> Array.sortBy (fun kv -> kv.Key)
-            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default array
+            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default EqualityComparer<Int32>.Default array
             actual |> should equalSeq expected
 
     [<Property>]
@@ -314,7 +314,7 @@ type Tests(output: ITestOutputHelper) =
             let allParts = Array.concat [|partA; partB; partC|]
 
             let expected = partC |> Array.sortBy (fun kv -> kv.Key)
-            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default allParts
+            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default EqualityComparer<Int32>.Default allParts
             actual |> should equalSeq expected
 
     [<Property>]
@@ -335,6 +335,6 @@ type Tests(output: ITestOutputHelper) =
                 |> Array.map (fun kv -> KeyValuePair(kv.Key, sprintf "C%s" kv.Value))
                 |> Array.sortBy (fun kv -> kv.Key)
 
-            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default withDuplicates
+            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default EqualityComparer<Int32>.Default withDuplicates
             actual |> should equalSeq expected
 
