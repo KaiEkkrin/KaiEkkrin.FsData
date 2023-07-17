@@ -1,7 +1,7 @@
 namespace KaiEkkrin.FsData.Data
 
 open System
-open System.Collections.Concurrent
+open System.Buffers
 open System.Collections.Generic
 open System.Text
 
@@ -70,10 +70,12 @@ module IbpTree2 =
         | Leaf of LeafNode<'TKey, 'TValue>
 
     // When doing a bulk create, I'll return a list of nodes associated with their minimum key:
+    // TODO try writing as an outref, and returning just the depth?
     type NodeCreation<'TKey, 'TValue> = struct
+        val Depth: int
         val MinKey: 'TKey
         val Node: Node<'TKey, 'TValue>
-        new (minKey, node) = { MinKey = minKey; Node = node }
+        new (depth, minKey, node) = { Depth = depth; MinKey = minKey; Node = node }
         end
 
     // When doing an insert, I'll either return a single node (updated with the new value)
@@ -124,7 +126,7 @@ module IbpTree2 =
             |> Array.mapi (fun i x -> KeyValuePair(creations[i + 1].MinKey, x.Node))
 
         let intNode = IntNode (nodes, creations[creations.Length - 1].Node)
-        NodeCreation (creations[0].MinKey, Int intNode)
+        NodeCreation (creations[0].Depth + 1, creations[0].MinKey, Int intNode)
 
     let createSubtree<'TKey, 'TValue> b (array: KeyValuePair<'TKey, 'TValue> []) =
         // Deal with the "none" situation separately
@@ -134,7 +136,7 @@ module IbpTree2 =
             let lengthOfSplitLeafNode = getLengthOfSplitLeafNode b
             let leafNodes =
                 ArrayUtil.splitIntoChunks lengthOfSplitLeafNode (b - 1) array
-                |> Array.map (fun c -> NodeCreation (c[0].Key, c |> LeafNode |> Leaf))
+                |> Array.map (fun c -> NodeCreation (1, c[0].Key, c |> LeafNode |> Leaf))
 
             // Remember, each NodeCreation corresponds to a child node in the internal
             // node, not to a key in it; there's always one more child nodes than keys
@@ -151,14 +153,20 @@ module IbpTree2 =
 
     // ## Enumeration stacks ##
 
+    type NodeStackFrame<'TKey, 'TValue> = struct
+        val mutable Index: int
+        val mutable Node: Node<'TKey, 'TValue>
+        new (index, node) = { Index = index; Node = node }
+        end
+
     type IStackLease<'TKey, 'TValue> =
-        abstract member Stack: Stack< Node<'TKey, 'TValue> >
+        abstract member Stack: NodeStackFrame<'TKey, 'TValue>[]
         inherit IDisposable
 
     // ## The tree data type ##
 
     type Tree<'TKey, 'TValue>(
-        B: int, Count: int, Comparer: IComparer<'TKey>, Root: Node<'TKey, 'TValue>
+        B: int, Count: int, Depth: int, Comparer: IComparer<'TKey>, Root: Node<'TKey, 'TValue>
     ) =
         // ## Helpers ##
 
@@ -215,21 +223,14 @@ module IbpTree2 =
 
             doFind 0 node.Nodes.Length
 
-        // The stack structure allocation used for enumeration etc -- I want to recycle these for
-        // better performance
-        // TODO If I could accurately estimate the max depth of the stack, I could do better using stackalloc
-
-        static let nodeStacks = new BlockingCollection< Stack< Node<'TKey, 'TValue> > >()
+        // The stack structure allocation used for enumeration etc -- I want to recycle these
+        // stacks for better performance
 
         let borrowNodeStack () =
-            let stack =
-                match nodeStacks.TryTake () with
-                | (true, st) -> st
-                | (false, _) -> Stack< Node<'TKey, 'TValue> >()
-
+            let stack: NodeStackFrame<'TKey, 'TValue>[] = ArrayPool.Shared.Rent Depth
             { new IStackLease<'TKey, 'TValue> with
                 member this.Stack = stack
-                member this.Dispose () = nodeStacks.Add stack
+                member this.Dispose () = ArrayPool.Shared.Return stack
             }
 
         // ## Enumerate all key-value pairs in order ##
@@ -237,21 +238,32 @@ module IbpTree2 =
         let rec enumerateAll node = seq {
             use lease = borrowNodeStack ()
             let stack = lease.Stack
-            //let stack = Stack< Node<'TKey, 'TValue> >()
-            stack.Push node
-            let mutable n = node
-            while stack.TryPop &n do
-                match n with
+
+            stack[0].Index <- 0
+            stack[0].Node <- node
+            let mutable stackIndex = 0
+            while stackIndex >= 0 do
+                match stack[stackIndex].Node with
                 | Int intNode ->
-                    stack.EnsureCapacity (stack.Count + intNode.Nodes.Length + 1) |> ignore
-                    stack.Push intNode.Last
-                    let mutable i = intNode.Nodes.Length - 1
-                    while i >= 0 do
-                        stack.Push intNode.Nodes[i].Value
-                        i <- i - 1
+                    let nodeIndex = stack[stackIndex].Index
+                    stack[stackIndex].Index <- nodeIndex + 1
+                    if nodeIndex > intNode.Nodes.Length then
+                        // I've reached the end of this node and need to go back to
+                        // the previous frame of the stack.
+                        stackIndex <- stackIndex - 1
+
+                    else
+                        // Push the next node onto the stack.
+                        stackIndex <- stackIndex + 1
+                        stack[stackIndex].Index <- 0
+                        stack[stackIndex].Node <-
+                            if nodeIndex = intNode.Nodes.Length then intNode.Last
+                            else intNode.Nodes[nodeIndex].Value
 
                 | Leaf leafNode ->
+                    // I can yield this all in one go without further messing with the stack
                     for value in leafNode.Values do yield value
+                    stackIndex <- stackIndex - 1
         }
 
         // ## Debug: check widths ##
@@ -330,7 +342,7 @@ module IbpTree2 =
                 |> Set.ofSeq
 
             if depths.Count > 1 then failwithf "At node %A, found differing depths: %A" node depths
-            depths |> Seq.head
+            (Seq.head depths) + 1
 
         let debugCheckCount () =
             let actualCount = enumerateAll Root |> Seq.length
@@ -342,7 +354,9 @@ module IbpTree2 =
             let depth = debugGetDepthNode Root
             let leafCount = debugCountLeafNodes Root
             let maxDepth = 1 + (Math.Log (leafCount, (float B) / 2.0) |> Math.Ceiling |> int)
-            if depth > maxDepth then Some <| sprintf "Required max depth = %d, found %d" maxDepth depth else None
+            if depth > maxDepth then Some <| sprintf "Required max depth = %d, found %d" maxDepth depth
+            elif depth <> Depth then Some <| sprintf "Calculated depth = %d, but had recorded %d" depth Depth
+            else None
 
         // ## Debug: formatted print ##
 
@@ -909,9 +923,10 @@ module IbpTree2 =
             | NotPresent -> this
             | Kept (_, Int intNode) when intNode.Nodes.Length = 0 ->
                 // Reduce the height of the tree by 1
-                Tree (B, Count - 1, Comparer, intNode.Last)
-            | Kept (_, node) -> Tree (B, Count - 1, Comparer, node)
-            | Deleted -> Tree (B, Count - 1, Comparer, [||] |> LeafNode |> Leaf)
+                let depth = if Depth = 1 then 1 else Depth - 1
+                Tree (B, Count - 1, depth, Comparer, intNode.Last)
+            | Kept (_, node) -> Tree (B, Count - 1, Depth, Comparer, node)
+            | Deleted -> Tree (B, Count - 1, Depth, Comparer, [||] |> LeafNode |> Leaf)
             | _ -> failwith "Unhandled delete case" // shouldn't reach this
 
         member this.EnumerateFrom key = findSeqInNode key Root
@@ -922,12 +937,12 @@ module IbpTree2 =
             let mutable result = Unchecked.defaultof< NodeInsertion<'TKey, 'TValue> >
             insertInNode key value Root &result
             match result with
-            | Inserted u -> Tree(B, Count + 1, Comparer, u)
-            | Updated u -> Tree(B, Count, Comparer, u)
+            | Inserted u -> Tree(B, Count + 1, Depth, Comparer, u)
+            | Updated u -> Tree(B, Count, Depth, Comparer, u)
             | Split (head, tailKey, tail) ->
                 // Generate a new root node out of this split:
                 let newRoot = IntNode ([|KeyValuePair(tailKey, head)|], tail) |> Int
-                Tree(B, Count + 1, Comparer, newRoot)
+                Tree(B, Count + 1, Depth + 1, Comparer, newRoot)
 
         member this.TryFind (key, result: outref<'TValue>) = findInNode key Root &result
 
@@ -940,13 +955,13 @@ module IbpTree2 =
 
             // Make a suitable root for the tree
             let creations = createSubtree b valuesArray
-            let root =
+            let depth, root =
                 match creations.Length with
-                | 0 -> LeafNode [||] |> Leaf
-                | 1 -> creations[0].Node
-                | _ -> (creationsToIntNode creations).Node
+                | 0 -> (1, LeafNode [||] |> Leaf)
+                | 1 -> (creations[0].Depth, creations[0].Node)
+                | _ -> (creations[0].Depth + 1, (creationsToIntNode creations).Node)
 
-            Tree (b, valuesArray.Length, cmp, root)
+            Tree (b, valuesArray.Length, depth, cmp, root)
 
         override this.ToString () =
             // Debug print
@@ -967,11 +982,11 @@ module IbpTree2 =
     let bValueFor<'T> = Math.Max (3, 64_000 / sizeof<'T>)
 
     let create<'TKey, 'TValue> cmp =
-        new Tree<'TKey, 'TValue>(bValueFor<'TKey>, 0, cmp, LeafNode [||] |> Leaf)
+        new Tree<'TKey, 'TValue>(bValueFor<'TKey>, 0, 1, cmp, LeafNode [||] |> Leaf)
 
     let createB<'TKey, 'TValue> b cmp =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
-        new Tree<'TKey, 'TValue>(b, 0, cmp, LeafNode [||] |> Leaf)
+        new Tree<'TKey, 'TValue>(b, 0, 1, cmp, LeafNode [||] |> Leaf)
 
     let createFrom<'TKey, 'TValue> cmp eqCmp values =
         Tree<'TKey, 'TValue>.CreateFrom bValueFor<'TKey> cmp eqCmp values
@@ -981,11 +996,11 @@ module IbpTree2 =
         Tree<'TKey, 'TValue>.CreateFrom b cmp eqCmp values
 
     let empty<'TKey, 'TValue> =
-        new Tree<'TKey, 'TValue>(bValueFor<'TKey>, 0, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
+        new Tree<'TKey, 'TValue>(bValueFor<'TKey>, 0, 1, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
 
     let emptyB<'TKey, 'TValue> b =
         if b < 3 then raise <| ArgumentException("b must be at least 3", nameof(b))
-        new Tree<'TKey, 'TValue>(b, 0, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
+        new Tree<'TKey, 'TValue>(b, 0, 1, Comparer<'TKey>.Default, LeafNode [||] |> Leaf)
 
     let debugValidate<'TKey, 'TValue> (tree: Tree<'TKey, 'TValue>) =
         tree.DebugValidate ()
