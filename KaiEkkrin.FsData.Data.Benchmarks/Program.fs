@@ -188,17 +188,17 @@ type TreeFind() =
 
     [<Benchmark(Description = "Find a value from within a large IbpTree2(3)")>]
     member this.FindIbp3() =
-        largeTree3 |> IbpTree2.tryFind randomKeysToDelete[index3] |> ignore
+        largeTree3.TryFind randomKeysToDelete[index3] |> ignore
         index3 <- if index3 = 999 then 0 else index3 + 1
 
     [<Benchmark(Description = "Find a value from within a large IbpTree2(16)")>]
     member this.FindIbp16() =
-        largeTree16 |> IbpTree2.tryFind randomKeysToDelete[index16] |> ignore
+        largeTree16.TryFind randomKeysToDelete[index16] |> ignore
         index16 <- if index16 = 999 then 0 else index16 + 1
 
     [<Benchmark(Description = "Find a value from within a large IbpTree2(128)")>]
     member this.FindIbp128() =
-        largeTree128 |> IbpTree2.tryFind randomKeysToDelete[index128] |> ignore
+        largeTree128.TryFind randomKeysToDelete[index128] |> ignore
         index128 <- if index128 = 999 then 0 else index128 + 1
 
     [<Benchmark(Description = "Find a value from within a large ImmutableSortedDictionary", Baseline = true)>]

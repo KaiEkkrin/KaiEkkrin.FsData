@@ -37,6 +37,9 @@ module IbpTree2 =
     type IntNode<'TKey, 'TValue> = struct
         // List of (P1, Kn), (P2, K2), ..., (Pc-1, Kc-1) as above
         // Key = Kx, Value = Px of course.
+        // TODO For better memory locality, should I make this an array of length c instead, with
+        // the pointer currently in `Last` being in the final position in the array instead,
+        // and the final key being unused?
         val Nodes: KeyValuePair<'TKey, Node<'TKey, 'TValue> > []
 
         // Pc as above
@@ -77,19 +80,23 @@ module IbpTree2 =
     // or a split of it, (N1, K1, N2) where K is such that
     // Key(X) < K1 for all X in N1
     // K1 <= Key(X) for all X in N2
+    // For performance, these should be emitted from functions as out refs
+    [<Struct>]
     type NodeInsertion<'TKey, 'TValue> =
-        | Inserted of Node<'TKey, 'TValue>
-        | Updated of Node<'TKey, 'TValue>
-        | Split of struct (Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>)
+        | Inserted of Inserted: Node<'TKey, 'TValue>
+        | Updated of Updated: Node<'TKey, 'TValue>
+        | Split of Split: struct (Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>)
 
     // The result of doing a delete.
+    // For performance, these should be emitted from functions as out refs
+    [<Struct>]
     type NodeDeletion<'TKey, 'TValue> =
         | NotPresent // key not found in leaf; nothing to delete
-        | Kept of struct ('TKey * Node<'TKey, 'TValue>) // the node, updated but not merged, with its new min key
-        | BorrowedLeft of struct (Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>) // borrowed from the left -- left min key can't have changed
-        | BorrowedRight of struct ('TKey * Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>) // borrowed from the right -- right min key may have changed
-        | MergedLeft of Node<'TKey, 'TValue> // merged to the left -- min key is as the left sibling's
-        | MergedRight of struct ('TKey * Node<'TKey, 'TValue>) // merged to the right -- min key may have changed
+        | Kept of Kept: struct ('TKey * Node<'TKey, 'TValue>) // the node, updated but not merged, with its new min key
+        | BorrowedLeft of BorrowedLeft: struct (Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>) // borrowed from the left -- left min key can't have changed
+        | BorrowedRight of BorrowedRight: struct ('TKey * Node<'TKey, 'TValue> * 'TKey * Node<'TKey, 'TValue>) // borrowed from the right -- right min key may have changed
+        | MergedLeft of MergedLeft: Node<'TKey, 'TValue> // merged to the left -- min key is as the left sibling's
+        | MergedRight of MergedRight: struct ('TKey * Node<'TKey, 'TValue>) // merged to the right -- min key may have changed
         | Deleted // the node is gone completely
 
     // The result of validating a node.
@@ -158,30 +165,38 @@ module IbpTree2 =
         let lengthOfSplitIntNode = getLengthOfSplitIntNode B
         let lengthOfSplitLeafNode = getLengthOfSplitLeafNode B
 
-        let findIndexInLeaf key (node: LeafNode<'TKey, 'TValue>) =
+        let rec findIndexInLeaf key (node: LeafNode<'TKey, 'TValue>) (index: outref<int>) =
             // The node is sorted in ascending order of keys.
             // I'm looking for either the index where the node's key equals the given one
             // or the index of the first node with a key less than the given one.
-
             // Finds within a range of the array between a (inclusive) and b (exclusive.)
-            let rec doFindIterate a b =
-                if b <= a then struct (a, false)
-                else
-                    match Comparer.Compare (key, node.Values[a].Key) with
-                    | 0 -> struct (a, true)
-                    | n when n < 0 -> struct (a, false)
-                    | _ -> doFindIterate (a + 1) b
+            doFind key node 0 node.Values.Length &index
 
-            let rec doFind a b =
-                if (b - a) < 8 then doFindIterate a b
-                else
-                    let i = (a + b) / 2
-                    match Comparer.Compare (key, node.Values[i].Key) with
-                    | 0 -> struct (i, true)
-                    | n when n < 0 -> doFind a i
-                    | _ -> doFind (i + 1) b
+        and doFindIterate key (node: LeafNode<'TKey, 'TValue>) a b (index: outref<int>) =
+            // Iterate from start (better for smaller nodes)
+            if b <= a then
+                index <- a
+                false
+            else
+                match Comparer.Compare (key, node.Values[a].Key) with
+                | 0 ->
+                    index <- a
+                    true
+                | n when n < 0 ->
+                    index <- a
+                    false
+                | _ -> doFindIterate key node (a + 1) b &index
 
-            doFind 0 node.Values.Length
+        and doFind key (node: LeafNode<'TKey, 'TValue>) a b (index: outref<int>) =
+            if (b - a) < 8 then doFindIterate key node a b &index
+            else
+                let i = (a + b) / 2
+                match Comparer.Compare (key, node.Values[i].Key) with
+                | 0 ->
+                    index <- i
+                    true
+                | n when n < 0 -> doFind key node a i &index
+                | _ -> doFind key node (i + 1) b &index
 
         let findIndexInInt key (node: IntNode<'TKey, 'TValue>) =
             // The node is sorted in ascending order of keys.
@@ -202,6 +217,7 @@ module IbpTree2 =
 
         // The stack structure allocation used for enumeration etc -- I want to recycle these for
         // better performance
+        // TODO If I could accurately estimate the max depth of the stack, I could do better using stackalloc
 
         static let nodeStacks = new BlockingCollection< Stack< Node<'TKey, 'TValue> > >()
 
@@ -221,6 +237,7 @@ module IbpTree2 =
         let rec enumerateAll node = seq {
             use lease = borrowNodeStack ()
             let stack = lease.Stack
+            //let stack = Stack< Node<'TKey, 'TValue> >()
             stack.Push node
             let mutable n = node
             while stack.TryPop &n do
@@ -441,22 +458,25 @@ module IbpTree2 =
 
         // ## Search ##
 
-        let rec findInNode key node =
+        let rec findInNode key node (result: outref<'TValue>) =
             match node with
-            | Int intNode -> findInInt key intNode
-            | Leaf leafNode -> findInLeaf key leafNode
+            | Int intNode -> findInInt key intNode &result
+            | Leaf leafNode -> findInLeaf key leafNode &result
 
-        and findInInt key node =
+        and findInInt key node result =
             let index = findIndexInInt key node
             let searchNode =
                 if index = node.Nodes.Length then node.Last else node.Nodes[index].Value
 
-            findInNode key searchNode
+            findInNode key searchNode &result
 
-        and findInLeaf key node =
-            match findIndexInLeaf key node with
-            | (index, true) -> Some node.Values[index].Value
-            | _ -> None
+        and findInLeaf key node result =
+            let mutable index = 0
+            match findIndexInLeaf key node &index with
+            | true ->
+                result <- node.Values[index].Value
+                true
+            | _ -> false
 
         // ## First item (lowest) ##
 
@@ -464,8 +484,8 @@ module IbpTree2 =
             match node with
             | Int intNode ->
                 if intNode.Nodes.Length = 0 then firstInNode intNode.Last
-                else (Array.head intNode.Nodes).Value |> firstInNode
-            | Leaf leafNode -> Array.head leafNode.Values
+                else intNode.Nodes[0].Value |> firstInNode
+            | Leaf leafNode -> leafNode.Values[0]
 
         // ## Search (forward sequence) ##
 
@@ -490,26 +510,27 @@ module IbpTree2 =
                 }
 
         and findSeqInLeaf key node =
-            match findIndexInLeaf key node with
-            | struct (index, _) when index < node.Values.Length ->
-                node.Values |> Seq.ofArray |> Seq.skip index
-            | _ -> Seq.empty
+            let mutable index = 0
+            findIndexInLeaf key node &index |> ignore
+            if index < node.Values.Length then node.Values |> Seq.ofArray |> Seq.skip index
+            else Seq.empty
 
         // ## Insert ##
 
-        let rec insertInNode key value node =
+        let rec insertInNode key value node (result: outref<NodeInsertion<'TKey, 'TValue> >) =
             match node with
-            | Int intNode -> insertInInt key value intNode
-            | Leaf leafNode -> insertInLeaf key value leafNode
+            | Int intNode -> insertInInt key value intNode &result
+            | Leaf leafNode -> insertInLeaf key value leafNode &result
 
-        and insertInLeaf key value node =
-            let struct (index, isExactMatch) = findIndexInLeaf key node
+        and insertInLeaf key value node (result: outref<NodeInsertion<'TKey, 'TValue> >) =
+            let mutable index = 0
+            let isExactMatch = findIndexInLeaf key node &index
             if isExactMatch then
                 // This is a straightforward value replacement and never needs splitting
                 let newValues =
                     ArrayUtil.arraySplice1 index 1 (KeyValuePair(key, value)) node.Values
 
-                newValues |> LeafNode |> Leaf |> Updated
+                result <- newValues |> LeafNode |> Leaf |> Updated
 
             else
                 // Sanity check
@@ -521,45 +542,43 @@ module IbpTree2 =
                     ArrayUtil.arraySplice1 index 0 (KeyValuePair(key, value)) node.Values
 
                 if newValues.Length < B then
-                    newValues |> LeafNode |> Leaf |> Inserted
-
+                    result <- newValues |> LeafNode |> Leaf |> Inserted
                 else
                     // This is too big, split it
                     // Note an F# array slice is *inclusive of the last index*
                     let newValues1 = newValues[..(lengthOfSplitLeafNode - 1)]
                     let newValues2 = newValues[lengthOfSplitLeafNode..]
-                
-                    Split (newValues1 |> LeafNode |> Leaf, newValues2[0].Key, newValues2 |> LeafNode |> Leaf)
+                    result <- Split (newValues1 |> LeafNode |> Leaf, newValues2[0].Key, newValues2 |> LeafNode |> Leaf)
 
-        and insertInInt key value node =
+        and insertInInt key value node (result: outref<NodeInsertion<'TKey, 'TValue> >) =
             // Do the recursive insert
             let index = findIndexInInt key node
-            let update =
-                if index = node.Nodes.Length then insertInNode key value node.Last
-                else insertInNode key value node.Nodes[index].Value
+            let mutable update = Unchecked.defaultof< NodeInsertion<'TKey, 'TValue> >
+            if index = node.Nodes.Length then insertInNode key value node.Last &update
+            else insertInNode key value node.Nodes[index].Value &update
 
             match update with
             | Inserted u ->
                 // This can be inserted without any resize of the current node and no change in key
                 if index = node.Nodes.Length then
-                    IntNode (node.Nodes, u) |> Int |> Inserted
+                    result <- IntNode (node.Nodes, u) |> Int |> Inserted
                 else
                     let newItem = KeyValuePair(node.Nodes[index].Key, u)
                     let newNodes =
                         ArrayUtil.arraySplice1 index 1 newItem node.Nodes
 
-                    IntNode (newNodes, node.Last) |> Int |> Inserted
+                    result <- IntNode (newNodes, node.Last) |> Int |> Inserted
 
             | Updated u ->
                 // Basically the same case as the previous one
                 if index = node.Nodes.Length then
-                    IntNode (node.Nodes, u) |> Int |> Updated
+                    result <- IntNode (node.Nodes, u) |> Int |> Updated
                 else
                     let newItem = KeyValuePair(node.Nodes[index].Key, u)
                     let newNodes =
                         ArrayUtil.arraySplice1 index 1 newItem node.Nodes
 
-                    IntNode (newNodes, node.Last) |> Int |> Updated
+                    result <- IntNode (newNodes, node.Last) |> Int |> Updated
 
             | Split (head, tailKey, tail) ->
                 // Sanity check
@@ -591,7 +610,7 @@ module IbpTree2 =
 
                 if updated.Nodes.Length < B then
                     // No further splitting is required
-                    updated |> Int |> Inserted
+                    result <- updated |> Int |> Inserted
 
                 else
                     // This is too big, split it.
@@ -603,24 +622,23 @@ module IbpTree2 =
                     let head = IntNode (newNodes1, updated.Nodes[lengthOfSplitIntNode].Value)
                     let tailKey = updated.Nodes[lengthOfSplitIntNode].Key
                     let tail = IntNode (newNodes2, updated.Last)
-
-                    Split (head |> Int, tailKey, tail |> Int)
+                    result <- Split (head |> Int, tailKey, tail |> Int)
 
         // ## Delete ##
 
-        let rec deleteFromNode key (left, middle, right) =
+        let rec deleteFromNode key (left, middle, right) (result: outref<NodeDeletion<'TKey, 'TValue> >) =
             match (left, middle, right) with
-            | (None, Int m, None) -> deleteFromInt key (None, m, None)
-            | (None, Int m, Some (Int r)) -> deleteFromInt key (None, m, Some r)
-            | (Some (Int l), Int m, None) -> deleteFromInt key (Some l, m, None)
-            | (Some (Int l), Int m, Some (Int r)) -> deleteFromInt key (Some l, m, Some r)
-            | (None, Leaf m, None) -> deleteFromLeaf key (None, m, None)
-            | (None, Leaf m, Some (Leaf r)) -> deleteFromLeaf key (None, m, Some r)
-            | (Some (Leaf l), Leaf m, None) -> deleteFromLeaf key (Some l, m, None)
-            | (Some (Leaf l), Leaf m, Some (Leaf r)) -> deleteFromLeaf key (Some l, m, Some r)
+            | (None, Int m, None) -> deleteFromInt key (None, m, None) &result
+            | (None, Int m, Some (Int r)) -> deleteFromInt key (None, m, Some r) &result
+            | (Some (Int l), Int m, None) -> deleteFromInt key (Some l, m, None) &result
+            | (Some (Int l), Int m, Some (Int r)) -> deleteFromInt key (Some l, m, Some r) &result
+            | (None, Leaf m, None) -> deleteFromLeaf key (None, m, None) &result
+            | (None, Leaf m, Some (Leaf r)) -> deleteFromLeaf key (None, m, Some r) &result
+            | (Some (Leaf l), Leaf m, None) -> deleteFromLeaf key (Some l, m, None) &result
+            | (Some (Leaf l), Leaf m, Some (Leaf r)) -> deleteFromLeaf key (Some l, m, Some r) &result
             | _ -> failwithf "Left-middle-right mismatch: %A; %A; %A" left middle right
 
-        and deleteFromInt key (left, node, right) =
+        and deleteFromInt key (left, node, right) (result: outref<NodeDeletion<'TKey, 'TValue> >) =
             let index = findIndexInInt key node
             let thisLeft = if index = 0 then None else Some (node.Nodes[index - 1].Value)
             let thisNode = if index = node.Nodes.Length then node.Last else node.Nodes[index].Value
@@ -629,22 +647,26 @@ module IbpTree2 =
                 elif index = node.Nodes.Length - 1 then Some (node.Last)
                 else Some (node.Nodes[index + 1].Value)
 
-            match deleteFromNode key (thisLeft, thisNode, thisRight) with
-            | NotPresent -> NotPresent
+            let mutable update = Unchecked.defaultof< NodeDeletion<'TKey, 'TValue> >
+            deleteFromNode key (thisLeft, thisNode, thisRight) &update
+            match update with
+            | NotPresent ->
+                result <- NotPresent
+
             | Kept (minKey, keptNode) ->
                 if index = 0 then
                     let newNodes =
                         node.Nodes
                         |> ArrayUtil.arraySplice1 0 1 (KeyValuePair (node.Nodes[0].Key, keptNode))
 
-                    postDeleteFromInt (Some minKey) (left, IntNode (newNodes, node.Last), right)
+                    postDeleteFromInt (Some minKey) (left, IntNode (newNodes, node.Last), right) &result
 
                 elif index = node.Nodes.Length then
                     let newNodes =
                         node.Nodes
                         |> ArrayUtil.arraySplice1 (index - 1) 1 (KeyValuePair (minKey, node.Nodes[index - 1].Value))
 
-                    postDeleteFromInt None (left, IntNode (newNodes, keptNode), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, keptNode), right) &result
 
                 else
                     // We replaced a node somewhere within the list.
@@ -655,7 +677,7 @@ module IbpTree2 =
                             KeyValuePair (node.Nodes[index].Key, keptNode)
                         |]
 
-                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right) &result
 
             | BorrowedLeft (bLeft, bMiddleKey, bMiddle) ->
                 if index = 0 then failwith "No left sibling to borrow from"
@@ -664,7 +686,7 @@ module IbpTree2 =
                         node.Nodes
                         |> ArrayUtil.arraySplice1 (index - 1) 1 (KeyValuePair (bMiddleKey, bLeft))
 
-                    postDeleteFromInt None (left, IntNode (newNodes, bMiddle), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, bMiddle), right) &result
 
                 else
                     let newNodes =
@@ -674,13 +696,13 @@ module IbpTree2 =
                             KeyValuePair (node.Nodes[index].Key, bMiddle)
                         |]
 
-                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right) &result
 
             | BorrowedRight (bMiddleKey, bMiddle, bRightKey, bRight) ->
                 if index = node.Nodes.Length then failwith "No right sibling to borrow from"
                 elif index = 0 && node.Nodes.Length = 1 then
                     let newNodes = [| KeyValuePair (bRightKey, bMiddle) |]
-                    postDeleteFromInt (Some bMiddleKey) (left, IntNode (newNodes, bRight), right)
+                    postDeleteFromInt (Some bMiddleKey) (left, IntNode (newNodes, bRight), right) &result
 
                 elif index = node.Nodes.Length - 1 then
                     let newNodes =
@@ -690,7 +712,7 @@ module IbpTree2 =
                             KeyValuePair (bRightKey, bMiddle)
                         |]
 
-                    postDeleteFromInt None (left, IntNode (newNodes, bRight), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, bRight), right) &result
 
                  elif index = 0 then
                     let newNodes =
@@ -700,7 +722,7 @@ module IbpTree2 =
                             KeyValuePair (node.Nodes[index + 1].Key, bRight)
                         |]
 
-                    postDeleteFromInt (Some bMiddleKey) (left, IntNode (newNodes, node.Last), right)
+                    postDeleteFromInt (Some bMiddleKey) (left, IntNode (newNodes, node.Last), right) &result
 
                 else
                     let newNodes =
@@ -711,35 +733,35 @@ module IbpTree2 =
                             KeyValuePair (node.Nodes[index + 1].Key, bRight)
                         |]
 
-                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right) &result
 
             | MergedLeft mLeft ->
                 if index = 0 then failwith "No left sibling to borrow from"
                 elif index = node.Nodes.Length then
                     let newNodes = node.Nodes |> ArrayUtil.arraySpliceX (node.Nodes.Length - 1) 1 [||]
-                    postDeleteFromInt None (left, IntNode (newNodes, mLeft), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, mLeft), right) &result
 
                 else
                     let newNodes = node.Nodes |> ArrayUtil.arraySplice1 (index - 1) 2 (KeyValuePair (node.Nodes[index].Key, mLeft))
-                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right) &result
 
             | MergedRight (mRightKey, mRight) ->
                 if index = node.Nodes.Length then failwith "No right sibling to borrow from"
                 elif index = 0 && node.Nodes.Length = 1 then
                     // Here I need to generate an empty internal node with a Left pointer only.
                     // This isn't valid in any complete tree but should be okay transiently (it'll be merged again)
-                    postDeleteFromInt (Some mRightKey) (left, IntNode ([||], mRight), right)
+                    postDeleteFromInt (Some mRightKey) (left, IntNode ([||], mRight), right) &result
 
                 elif index = 0 then
                     let newNodes = node.Nodes |> ArrayUtil.arraySplice1 0 2 (KeyValuePair (node.Nodes[index + 1].Key, mRight))
-                    postDeleteFromInt (Some mRightKey) (left, IntNode (newNodes, node.Last), right)
+                    postDeleteFromInt (Some mRightKey) (left, IntNode (newNodes, node.Last), right) &result
 
                 elif index = node.Nodes.Length - 1 then
                     let newNodes =
                         node.Nodes
                         |> ArrayUtil.arraySplice1 (index - 1) 2 (KeyValuePair (mRightKey, node.Nodes[index - 1].Value))
 
-                    postDeleteFromInt None (left, IntNode (newNodes, mRight), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, mRight), right) &result
 
                 else
                     let newNodes =
@@ -749,19 +771,21 @@ module IbpTree2 =
                             KeyValuePair (node.Nodes[index + 1].Key, mRight)
                         |]
 
-                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right) &result
 
             | Deleted ->
-                if index = 0 && node.Nodes.Length = 0 then Deleted
+                if index = 0 && node.Nodes.Length = 0 then
+                    result <- Deleted
+
                 elif index = node.Nodes.Length then
                     let newNodes = node.Nodes |> ArrayUtil.arraySpliceX (node.Nodes.Length - 1) 1 [||]
-                    postDeleteFromInt None (left, IntNode (newNodes, node.Nodes[node.Nodes.Length - 1].Value), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Nodes[node.Nodes.Length - 1].Value), right) &result
 
                 else
                     let newNodes = node.Nodes |> ArrayUtil.arraySpliceX index 1 [||]
-                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right)
+                    postDeleteFromInt None (left, IntNode (newNodes, node.Last), right) &result
 
-        and postDeleteFromInt maybeMinKey (left, node, right) =
+        and postDeleteFromInt maybeMinKey (left, node, right) (result: outref<NodeDeletion<'TKey, 'TValue> >) =
             let resolveMinKey () =
                 match maybeMinKey with
                 | Some m -> m
@@ -772,14 +796,14 @@ module IbpTree2 =
             match (left, right) with
             | _ when node.Nodes.Length >= lengthOfSplitIntNode ->
                 // TODO common case -- optimisation: avoid needing to fetch `maybeMinKey`?
-                Kept (resolveMinKey (), node |> Int)
+                result <- Kept (resolveMinKey (), node |> Int)
 
             | (Some l, _) when l.Nodes.Length > lengthOfSplitIntNode ->
                 // We can grab a value from the node on the left to fill this one out:
                 let newMiddleNodes = node.Nodes |> ArrayUtil.arraySplice1 0 0 (KeyValuePair (resolveMinKey (), l.Last))
                 let newLeftLast = l.Nodes[l.Nodes.Length - 1]
                 let newLeftNodes = l.Nodes |> ArrayUtil.arraySpliceX (l.Nodes.Length - 1) 1 [||]
-                BorrowedLeft (
+                result <- BorrowedLeft (
                     IntNode (newLeftNodes, newLeftLast.Value) |> Int,
                     newLeftLast.Key,
                     IntNode (newMiddleNodes, node.Last) |> Int)
@@ -790,7 +814,7 @@ module IbpTree2 =
                 let newMiddleNodes = node.Nodes |> ArrayUtil.arraySplice1 node.Nodes.Length 0 (KeyValuePair (rightMinKey, node.Last))
                 let newMiddleLast = r.Nodes[0]
                 let newRightNodes = r.Nodes |> ArrayUtil.arraySpliceX 0 1 [||]
-                BorrowedRight (
+                result <- BorrowedRight (
                     resolveMinKey (),
                     IntNode (newMiddleNodes, newMiddleLast.Value) |> Int,
                     newMiddleLast.Key,
@@ -803,7 +827,7 @@ module IbpTree2 =
                     |> ArrayUtil.arraySplice1 0 0 (KeyValuePair (resolveMinKey (), l.Last))
                     |> ArrayUtil.arraySpliceX 0 0 l.Nodes
 
-                IntNode (mergedNodes, node.Last) |> Int |> MergedLeft
+                result <- IntNode (mergedNodes, node.Last) |> Int |> MergedLeft
 
             | (_, Some r) ->
                 // The right node and this are both minimum size nodes or under and we can merge them
@@ -813,48 +837,51 @@ module IbpTree2 =
                     |> ArrayUtil.arraySplice1 0 0 (KeyValuePair (rightMinKey, node.Last))
                     |> ArrayUtil.arraySpliceX 0 0 node.Nodes
 
-                MergedRight (resolveMinKey (), IntNode (mergedNodes, r.Last) |> Int)
+                result <- MergedRight (resolveMinKey (), IntNode (mergedNodes, r.Last) |> Int)
 
             | _ ->
                 // This should only occur if this is the only node in the tree.
-                Kept (resolveMinKey (), node |> Int)
+                result <- Kept (resolveMinKey (), node |> Int)
 
-        and deleteFromLeaf key (left, node, right) =
-            match findIndexInLeaf key node with
-            | struct (_, false) -> NotPresent
-            | struct (i, true) ->
-                let newValues = node.Values |> ArrayUtil.arraySpliceX i 1 [||]
+        and deleteFromLeaf key (left, node, right) (result: outref<NodeDeletion<'TKey, 'TValue> >) =
+            let mutable index = 0
+            if findIndexInLeaf key node &index then
+                let newValues = node.Values |> ArrayUtil.arraySpliceX index 1 [||]
                 match (left, right) with
                 | _ when newValues.Length >= lengthOfSplitLeafNode ->
                     // No borrowing or merging required
-                    Kept (newValues[0].Key, newValues |> LeafNode |> Leaf)
+                    result <- Kept (newValues[0].Key, newValues |> LeafNode |> Leaf)
 
                 | (Some l, _) when l.Values.Length > lengthOfSplitLeafNode ->
                     // We can grab a value from the node on the left to fill this one out:
                     let newMiddle = newValues |> ArrayUtil.arraySplice1 0 0 l.Values[l.Values.Length - 1]
                     let newLeft = l.Values |> ArrayUtil.arraySpliceX (l.Values.Length - 1) 1 [||]
-                    BorrowedLeft (newLeft |> LeafNode |> Leaf, newMiddle[0].Key, newMiddle |> LeafNode |> Leaf)
+                    result <- BorrowedLeft (newLeft |> LeafNode |> Leaf, newMiddle[0].Key, newMiddle |> LeafNode |> Leaf)
 
                 | (_, Some r) when r.Values.Length > lengthOfSplitLeafNode ->
                     // We can grab a value from the node on the right to fill this one out:
                     let newMiddle = newValues |> ArrayUtil.arraySplice1 newValues.Length 0 r.Values[0]
                     let newRight = r.Values |> ArrayUtil.arraySpliceX 0 1 [||]
-                    BorrowedRight (newMiddle[0].Key, newMiddle |> LeafNode |> Leaf, newRight[0].Key, newRight |> LeafNode |> Leaf)
+                    result <- BorrowedRight (newMiddle[0].Key, newMiddle |> LeafNode |> Leaf, newRight[0].Key, newRight |> LeafNode |> Leaf)
 
                 | (Some l, _) ->
                     // The left node and this are both minimum size nodes or under and we can merge them
                     let merged = newValues |> ArrayUtil.arraySpliceX 0 0 l.Values
-                    MergedLeft (merged |> LeafNode |> Leaf)
+                    result <- MergedLeft (merged |> LeafNode |> Leaf)
 
                 | (_, Some r) ->
                     // The right node and this are both minimum size nodes or under and we can merge them
                     let merged = newValues |> ArrayUtil.arraySpliceX newValues.Length 0 r.Values
-                    MergedRight (merged[0].Key, merged |> LeafNode |> Leaf)
+                    result <- MergedRight (merged[0].Key, merged |> LeafNode |> Leaf)
 
                 | _ ->
                     // This should only occur if this is the only node in the tree.
-                    if newValues.Length = 0 then Deleted
-                    else Kept (newValues[0].Key, newValues |> LeafNode |> Leaf)
+                    result <-
+                        if newValues.Length = 0 then Deleted
+                        else Kept (newValues[0].Key, newValues |> LeafNode |> Leaf)
+
+            else
+                result <- NotPresent
 
         // ## Public methods ##
 
@@ -876,7 +903,9 @@ module IbpTree2 =
                             | _ -> None
 
         member this.Delete key =
-            match deleteFromNode key (None, Root, None) with
+            let mutable result = Unchecked.defaultof< NodeDeletion<'TKey, 'TValue> >
+            deleteFromNode key (None, Root, None) &result
+            match result with
             | NotPresent -> this
             | Kept (_, Int intNode) when intNode.Nodes.Length = 0 ->
                 // Reduce the height of the tree by 1
@@ -890,7 +919,9 @@ module IbpTree2 =
         member this.First () = firstInNode Root
 
         member this.Insert key value =
-            match insertInNode key value Root with
+            let mutable result = Unchecked.defaultof< NodeInsertion<'TKey, 'TValue> >
+            insertInNode key value Root &result
+            match result with
             | Inserted u -> Tree(B, Count + 1, Comparer, u)
             | Updated u -> Tree(B, Count, Comparer, u)
             | Split (head, tailKey, tail) ->
@@ -898,7 +929,7 @@ module IbpTree2 =
                 let newRoot = IntNode ([|KeyValuePair(tailKey, head)|], tail) |> Int
                 Tree(B, Count + 1, Comparer, newRoot)
 
-        member this.TryFind key = findInNode key Root
+        member this.TryFind (key, result: outref<'TValue>) = findInNode key Root &result
 
         // TODO test this. I think I'll need the logic inside for implementing delete properly;
         // also it's useful in its own right
@@ -970,4 +1001,7 @@ module IbpTree2 =
         tree.Insert key value
 
     let tryFind<'TKey, 'TValue> key (tree: Tree<'TKey, 'TValue>) =
-        tree.TryFind key
+        let mutable result = Unchecked.defaultof<'TValue>
+        let found = tree.TryFind (key, &result)
+        if found then Some result else None
+
