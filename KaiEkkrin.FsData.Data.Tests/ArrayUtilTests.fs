@@ -7,7 +7,7 @@ open Xunit.Abstractions
 open FsCheck
 open FsCheck.Xunit
 open FsUnit.Xunit
-open KaiEkkrin.FsData.Data
+open KaiEkkrin.FsData.Core
 
 type Tests(output: ITestOutputHelper) =
 
@@ -15,7 +15,7 @@ type Tests(output: ITestOutputHelper) =
 
     [<Property>]
     let ``An empty array receives one item`` (item: int) =
-        let spliced = ArrayUtil.arraySplice1 0 0 item [||]
+        let spliced = ArrayUtil.ArraySplice1 (0, 0, item, ReadOnlySpan<int>.Empty)
         spliced |> should equal [|item|]
 
     [<Property>]
@@ -23,7 +23,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 0 0 "A" sourceArray
+            let destinationArray = ArrayUtil.ArraySplice1 (0, 0, "A", sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = 0 then Assert.Equal ("A", v)
@@ -34,7 +34,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 length 0 "A" sourceArray
+            let destinationArray = ArrayUtil.ArraySplice1 (length, 0, "A", sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = length then Assert.Equal ("A", v)
@@ -53,7 +53,7 @@ type Tests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| fun (index, length) ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 index 0 "A" sourceArray
+            let destinationArray = ArrayUtil.ArraySplice1 (index, 0, "A", sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = index then Assert.Equal ("A", v)
@@ -65,7 +65,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 0 1 "A" sourceArray
+            let destinationArray = ArrayUtil.ArraySplice1 (0, 1, "A", sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = 0 then Assert.Equal ("A", v)
@@ -76,7 +76,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 (length - 1) 1 "A" sourceArray
+            let destinationArray = ArrayUtil.ArraySplice1 (length - 1, 1, "A", sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = (length - 1) then Assert.Equal ("A", v)
@@ -95,7 +95,7 @@ type Tests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| fun (index, length) ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 index 1 "A" sourceArray
+            let destinationArray = ArrayUtil.ArraySplice1 (index, 1, "A", sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = index then Assert.Equal ("A", v)
@@ -106,7 +106,7 @@ type Tests(output: ITestOutputHelper) =
         let arb = Gen.choose (1, 100) |> Arb.fromGen
         Prop.forAll arb <| fun length ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 0 length "A" sourceArray
+            let destinationArray = ArrayUtil.ArraySplice1 (0, length, "A", sourceArray)
             Assert.Equal (1, destinationArray.Length)
             Assert.Equal ("A", destinationArray[0])
 
@@ -114,7 +114,7 @@ type Tests(output: ITestOutputHelper) =
 
     [<Property>]
     let ``An empty array receives one item`` (item: int) =
-        let spliced = ArrayUtil.arraySpliceX 0 0 [|item|] [||]
+        let spliced = ArrayUtil.ArraySpliceX (0, 0, ReadOnlySpan [|item|], ReadOnlySpan<int>.Empty)
         Assert.Equal (1, spliced.Length)
         Assert.Equal (item, spliced[0])
 
@@ -123,7 +123,8 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX 0 0 [|"A"|] sourceArray
+
+            let destinationArray = ArrayUtil.ArraySpliceX (0, 0, ReadOnlySpan [|"A"|], ReadOnlySpan sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = 0 then Assert.Equal ("A", v)
@@ -134,7 +135,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX length 0 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.ArraySpliceX (length, 0, ReadOnlySpan [|"A"|], ReadOnlySpan sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = length then Assert.Equal ("A", v)
@@ -153,7 +154,7 @@ type Tests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| fun (index, length) ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX index 0 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.ArraySpliceX (index, 0, ReadOnlySpan [|"A"|], ReadOnlySpan sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = index then Assert.Equal ("A", v)
@@ -165,7 +166,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX 0 1 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.ArraySpliceX (0, 1, ReadOnlySpan [|"A"|], ReadOnlySpan sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = 0 then Assert.Equal ("A", v)
@@ -176,7 +177,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX (length - 1) 1 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.ArraySpliceX (length - 1, 1, ReadOnlySpan [|"A"|], ReadOnlySpan sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = (length - 1) then Assert.Equal ("A", v)
@@ -195,7 +196,7 @@ type Tests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| fun (index, length) ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX index 1 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.ArraySpliceX (index, 1, ReadOnlySpan [|"A"|], ReadOnlySpan sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = index then Assert.Equal ("A", v)
@@ -206,7 +207,7 @@ type Tests(output: ITestOutputHelper) =
         let arb = Gen.choose (1, 100) |> Arb.fromGen
         Prop.forAll arb <| fun length ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX 0 length [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.ArraySpliceX (0, length, ReadOnlySpan [|"A"|], ReadOnlySpan sourceArray)
             Assert.Equal (1, destinationArray.Length)
             Assert.Equal ("A", destinationArray[0])
 
@@ -216,7 +217,7 @@ type Tests(output: ITestOutputHelper) =
         let arb = Gen.choose (1, 100) |> Arb.fromGen
         Prop.forAll arb <| fun length ->
             let newItems = Array.init length (fun i -> sprintf "%d" i)
-            let spliced = ArrayUtil.arraySpliceX 0 0 newItems [||]           
+            let spliced = ArrayUtil.ArraySpliceX (0, 0, ReadOnlySpan newItems, ReadOnlySpan<string>.Empty)
             Assert.Equal (length, spliced.Length)
             spliced |> Array.iteri (fun i v ->
                 Assert.Equal (sprintf "%d" i, v))
@@ -232,7 +233,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll arb <| fun (sourceLength, spliceLength) ->
             let sourceArray = Array.init sourceLength (fun i -> sprintf "%d" i)
             let spliceArray = Array.init spliceLength (fun i -> sprintf "X%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX 1 (sourceLength - 2) spliceArray sourceArray
+            let destinationArray = ArrayUtil.ArraySpliceX (1, sourceLength - 2, ReadOnlySpan spliceArray, ReadOnlySpan sourceArray)
 
             Assert.Equal (spliceLength + 2, destinationArray.Length)
             Assert.Equal ("0", destinationArray[0])
@@ -245,7 +246,7 @@ type Tests(output: ITestOutputHelper) =
     // used within the tree:
     let genChunkSizeRange = gen {
         let! b = TestCommon.genBValue
-        let minChunkSize = Math.Min (IbpTree2.getLengthOfSplitIntNode b, IbpTree2.getLengthOfSplitLeafNode b)
+        let minChunkSize = Math.Min (KaiEkkrin.FsData.Data.IbpTree2.getLengthOfSplitIntNode b, KaiEkkrin.FsData.Data.IbpTree2.getLengthOfSplitLeafNode b)
         let maxChunkSize = b - 1
         return (minChunkSize, maxChunkSize)
     }
@@ -260,7 +261,7 @@ type Tests(output: ITestOutputHelper) =
         }
 
         Prop.forAll arb <| fun (minChunkSize, maxChunkSize, array) ->
-            let chunks = ArrayUtil.splitIntoChunks minChunkSize maxChunkSize array
+            let chunks = ArrayUtil.SplitIntoChunks (minChunkSize, maxChunkSize, array)
 
             chunks.Length |> should equal 1
             chunks[0] |> should equalSeq array
@@ -275,7 +276,7 @@ type Tests(output: ITestOutputHelper) =
         }
 
         Prop.forAll arb <| fun (minChunkSize, maxChunkSize, array) ->
-            let chunks = ArrayUtil.splitIntoChunks minChunkSize maxChunkSize array
+            let chunks = ArrayUtil.SplitIntoChunks (minChunkSize, maxChunkSize, array)
 
             // Every chunk must be between min and max chunk sizes (inclusive)
             for chunk in chunks do
@@ -298,7 +299,7 @@ type Tests(output: ITestOutputHelper) =
         let arb = Arb.fromGen <| genDistinctKeyValues
         Prop.forAll arb <| fun array ->
             let expected = array |> Array.sortBy (fun kv -> kv.Key)
-            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default EqualityComparer<Int32>.Default array
+            let actual = ArrayUtil.SortedAndDistinct (Comparer<Int32>.Default, EqualityComparer<Int32>.Default, array)
             actual |> should equalSeq expected
 
     [<Property>]
@@ -314,7 +315,7 @@ type Tests(output: ITestOutputHelper) =
             let allParts = Array.concat [|partA; partB; partC|]
 
             let expected = partC |> Array.sortBy (fun kv -> kv.Key)
-            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default EqualityComparer<Int32>.Default allParts
+            let actual = ArrayUtil.SortedAndDistinct (Comparer<Int32>.Default, EqualityComparer<Int32>.Default, allParts)
             actual |> should equalSeq expected
 
     [<Property>]
@@ -335,6 +336,6 @@ type Tests(output: ITestOutputHelper) =
                 |> Array.map (fun kv -> KeyValuePair(kv.Key, sprintf "C%s" kv.Value))
                 |> Array.sortBy (fun kv -> kv.Key)
 
-            let actual = ArrayUtil.sortedAndDistinct Comparer<Int32>.Default EqualityComparer<Int32>.Default withDuplicates
+            let actual = ArrayUtil.SortedAndDistinct (Comparer<Int32>.Default, EqualityComparer<Int32>.Default, withDuplicates)
             actual |> should equalSeq expected
 

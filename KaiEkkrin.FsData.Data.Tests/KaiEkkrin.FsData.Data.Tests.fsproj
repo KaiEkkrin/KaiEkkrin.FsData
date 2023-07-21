@@ -28,6 +28,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\KaiEkkrin.FsData.Core\KaiEkkrin.FsData.Core.csproj" />
     <ProjectReference Include="..\KaiEkkrin.FsData.Data\KaiEkkrin.FsData.Data.fsproj" />
   </ItemGroup>
 </Project>
