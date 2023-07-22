@@ -163,6 +163,16 @@ module IbpTree2 =
         abstract member Stack: NodeStackFrame<'TKey, 'TValue>[]
         inherit IDisposable
 
+    // The stack structure allocation used for enumeration etc -- I want to recycle these
+    // stacks for better performance
+
+    let borrowNodeStack depth =
+        let stack: NodeStackFrame<'TKey, 'TValue>[] = ArrayPool.Shared.Rent depth
+        { new IStackLease<'TKey, 'TValue> with
+            member this.Stack = stack
+            member this.Dispose () = ArrayPool.Shared.Return stack
+        }
+
     // ## The tree data type ##
 
     type Tree<'TKey, 'TValue>(
@@ -223,26 +233,16 @@ module IbpTree2 =
 
             doFind 0 node.Nodes.Length
 
-        // The stack structure allocation used for enumeration etc -- I want to recycle these
-        // stacks for better performance
-
-        let borrowNodeStack () =
-            let stack: NodeStackFrame<'TKey, 'TValue>[] = ArrayPool.Shared.Rent Depth
-            { new IStackLease<'TKey, 'TValue> with
-                member this.Stack = stack
-                member this.Dispose () = ArrayPool.Shared.Return stack
-            }
-
         // ## Enumerate all key-value pairs in order ##
 
         let enumerateAll node = seq {
             // TODO if this reduces allocations, clean up the interface and make the partial enumerate
             // be able to use it too, avoiding the seq { ... } wrapping.
-            let lease = borrowNodeStack ()
+            let lease = borrowNodeStack Depth
             let stack = lease.Stack
             stack[0].Index <- 0
             stack[0].Node <- node
-            use enumerator = new TreeEnumerator<'TKey, 'TValue> (lease, node)
+            use enumerator = new TreeFullEnumerator<'TKey, 'TValue> (lease, node)
             while enumerator.MoveNext () do yield enumerator.Current
         }
 
@@ -480,34 +480,6 @@ module IbpTree2 =
                 if intNode.Nodes.Length = 0 then firstInNode intNode.Last
                 else intNode.Nodes[0].Value |> firstInNode
             | Leaf leafNode -> leafNode.Values[0]
-
-        // ## Search (forward sequence) ##
-
-        let rec findSeqInNode key node =
-            match node with
-            | Int intNode -> findSeqInInt key intNode
-            | Leaf leafNode -> findSeqInLeaf key leafNode
-
-        and findSeqInInt key node =
-            let index = findIndexInInt key node
-            if index = node.Nodes.Length then
-                // Only need to search the last node
-                findSeqInNode key node.Last
-            else
-                // Need to search from `index`, including the last.
-                seq {
-                    yield! findSeqInNode key node.Nodes[index].Value
-                    for i in (index + 1)..(node.Nodes.Length - 1) do
-                        yield! enumerateAll node.Nodes[i].Value
-
-                    yield! enumerateAll node.Last
-                }
-
-        and findSeqInLeaf key node =
-            let mutable index = 0
-            findIndexInLeaf key node &index |> ignore
-            if index < node.Values.Length then node.Values |> Seq.ofArray |> Seq.skip index
-            else Seq.empty
 
         // ## Insert ##
 
@@ -877,9 +849,38 @@ module IbpTree2 =
             else
                 result <- NotPresent
 
+        // ## Internal methods ##
+
+        member internal _.CreateEnumeratorFrom key =
+            // Construct a stack for the partial enumerator
+            let lease = borrowNodeStack Depth
+            let stack = lease.Stack
+            stack[0].Node <- Root
+
+            let mutable stackIndex = 0
+            let mutable notFound = true
+
+            while notFound do
+                match stack[stackIndex].Node with
+                | Int intNode ->
+                    let index = findIndexInInt key intNode
+                    stack[stackIndex].Index <- index + 1
+                    stackIndex <- stackIndex + 1
+                    stack[stackIndex].Node <-
+                        if index = intNode.Nodes.Length then intNode.Last
+                        else intNode.Nodes[index].Value
+
+                | Leaf leafNode ->
+                    let mutable index = 0
+                    let _ = findIndexInLeaf key leafNode &index
+                    stack[stackIndex].Index <- index
+                    notFound <- false
+
+            new TreePartialEnumerator<'TKey, 'TValue> (lease, stackIndex)
+
         // ## Public methods ##
 
-        member this.DebugValidate () =
+        member _.DebugValidate () =
             match debugCheckCount () with
             | Some err -> Some err
             | None ->
@@ -909,18 +910,19 @@ module IbpTree2 =
             | Deleted -> Tree (B, Count - 1, Depth, Comparer, [||] |> LeafNode |> Leaf)
             | _ -> failwith "Unhandled delete case" // shouldn't reach this
 
-        member this.EnumerateAll () =
-            let lease = borrowNodeStack ()
+        member _.EnumerateAll () =
+            // Construct a stack for the full enumerator
+            let lease = borrowNodeStack Depth
             let stack = lease.Stack
             stack[0].Index <- 0
             stack[0].Node <- Root
-            new TreeEnumerator<'TKey, 'TValue> (lease, Root)
+            new TreeFullEnumerator<'TKey, 'TValue> (lease, Root)
 
-        member this.EnumerateFrom key = findSeqInNode key Root
+        member this.EnumerateFrom key = TreePartialEnumerable<'TKey, 'TValue> (key, this)
 
-        member this.First () = firstInNode Root
+        member _.First () = firstInNode Root
 
-        member this.Insert key value =
+        member _.Insert key value =
             let mutable result = Unchecked.defaultof< NodeInsertion<'TKey, 'TValue> >
             insertInNode key value Root &result
             match result with
@@ -931,7 +933,7 @@ module IbpTree2 =
                 let newRoot = IntNode ([|KeyValuePair(tailKey, head)|], tail) |> Int
                 Tree(B, Count + 1, Depth + 1, Comparer, newRoot)
 
-        member this.TryFind (key, result: outref<'TValue>) = findInNode key Root &result
+        member _.TryFind (key, result: outref<'TValue>) = findInNode key Root &result
 
         // TODO test this. I think I'll need the logic inside for implementing delete properly;
         // also it's useful in its own right
@@ -950,7 +952,7 @@ module IbpTree2 =
 
             Tree (b, valuesArray.Length, depth, cmp, root)
 
-        override this.ToString () =
+        override _.ToString () =
             // Debug print
             let sb = StringBuilder ()
             sb.AppendLine $"Tree({B}, " |> ignore
@@ -964,13 +966,27 @@ module IbpTree2 =
         interface IEnumerable<KeyValuePair<'TKey, 'TValue> > with
             member this.GetEnumerator () = this.EnumerateAll ()
 
-    and TreeEnumerator<'TKey, 'TValue>(Lease: IStackLease<'TKey, 'TValue>, Node: Node<'TKey, 'TValue>) =
+    and [<AbstractClass>] TreeEnumerator<'TKey, 'TValue>(Lease: IStackLease<'TKey, 'TValue>, Index: int) =
         let mutable stack = Lease.Stack
-        let mutable stackIndex = 0
+        let mutable stackIndex = Index
         let mutable current = Unchecked.defaultof< KeyValuePair<'TKey, 'TValue> >
         let mutable isDisposed = false
 
         member _.Current = current
+
+        member internal _.AssignStack1 node =
+            stackIndex <- 0
+            stack[0].Index <- 0
+            stack[0].Node <- node
+
+        member internal _.AssignStackX (frames: ReadOnlySpan< NodeStackFrame<'TKey, 'TValue> >) =
+            frames.CopyTo (stack.AsSpan ())
+            stackIndex <- frames.Length - 1
+
+        abstract DisposeInternal : unit -> unit
+        default _.DisposeInternal () =
+            Lease.Dispose ()
+            stack <- Unchecked.defaultof< NodeStackFrame<'TKey, 'TValue>[] > // to prevent further usage
 
         member _.MoveNext () =
             let mutable found = false
@@ -1004,11 +1020,12 @@ module IbpTree2 =
 
             found
 
+        abstract member Reset : unit -> unit
+
         interface IDisposable with
-            member _.Dispose () =
+            member this.Dispose () =
                 if not isDisposed then
-                    Lease.Dispose ()
-                    stack <- Unchecked.defaultof< NodeStackFrame<'TKey, 'TValue>[] > // to prevent further usage
+                    this.DisposeInternal ()
                     isDisposed <- true
 
         interface System.Collections.IEnumerator with
@@ -1016,13 +1033,41 @@ module IbpTree2 =
 
             member this.MoveNext () = this.MoveNext ()
 
-            member _.Reset () =
-                stackIndex <- 0
-                stack[0].Index <- 0
-                stack[0].Node <- Node
+            member this.Reset () = this.Reset ()
 
         interface IEnumerator< KeyValuePair<'TKey, 'TValue> > with
             member _.Current = current
+
+    and TreeFullEnumerator<'TKey, 'TValue>(Lease: IStackLease<'TKey, 'TValue>, Root: Node<'TKey, 'TValue>) =
+        inherit TreeEnumerator<'TKey, 'TValue>(Lease, 0)
+
+        override this.Reset () = this.AssignStack1 Root
+
+    and TreePartialEnumerator<'TKey, 'TValue>(Lease: IStackLease<'TKey, 'TValue>, Index: int) =
+        inherit TreeEnumerator<'TKey, 'TValue>(Lease, Index)
+
+        // Copy the original stack to another one that I can restore in case of reset:
+        let resetLease = borrowNodeStack (Index + 1)
+        do
+            let span = ReadOnlySpan Lease.Stack
+            let slice = span.Slice (start = 0, length = Index + 1)
+            slice.CopyTo (resetLease.Stack.AsSpan ())
+
+        override _.DisposeInternal () =
+            resetLease.Dispose ()
+            base.DisposeInternal ()
+
+        override this.Reset () =
+            let span = ReadOnlySpan resetLease.Stack
+            let slice = span.Slice (start = 0, length = Index + 1)
+            this.AssignStackX slice
+
+    and TreePartialEnumerable<'TKey, 'TValue>(Key: 'TKey, Tre: Tree<'TKey, 'TValue>) =
+        interface System.Collections.IEnumerable with
+            member this.GetEnumerator () = (Tre.CreateEnumeratorFrom Key) :> System.Collections.IEnumerator
+
+        interface IEnumerable< KeyValuePair<'TKey, 'TValue> > with
+            member this.GetEnumerator () = (Tre.CreateEnumeratorFrom Key) :> IEnumerator< KeyValuePair<'TKey, 'TValue> >
 
     let bValueFor<'T> = Math.Max (3, 64_000 / sizeof<'T>)
 
