@@ -12,19 +12,19 @@
 |             'Delete 1000 random values from large IbpTree2(128)' |   863.9 us | 5.43 us | 4.81 us |  1.25 | 370.1172 | 141.6016 | 4536.59 KB |        4.87 |
 | 'Delete 1000 random values from large ImmutableSortedDictionary' |   691.3 us | 1.42 us | 1.32 us |  1.00 |  75.1953 |  23.4375 |  930.87 KB |        1.00 |
 
-|                                                      Method |     Mean |     Error |    StdDev | Ratio |     Gen0 | Allocated | Alloc Ratio |
-|------------------------------------------------------------ |---------:|----------:|----------:|------:|---------:|----------:|------------:|
-|               'Enumerate all values from large IbpTree2(3)' | 3.222 ms | 0.0254 ms | 0.0237 ms |  0.81 | 171.8750 | 2200330 B |   36,070.98 |
-|              'Enumerate all values from large IbpTree2(16)' | 1.802 ms | 0.0087 ms | 0.0081 ms |  0.45 |  17.5781 |  224329 B |    3,677.52 |
-|             'Enumerate all values from large IbpTree2(128)' | 1.635 ms | 0.0083 ms | 0.0078 ms |  0.41 |   1.9531 |   25665 B |      420.74 |
-| 'Enumerate all values from large ImmutableSortedDictionary' | 3.975 ms | 0.0177 ms | 0.0166 ms |  1.00 |        - |      61 B |        1.00 |
+|                                                      Method |     Mean |     Error |    StdDev | Ratio | Allocated | Alloc Ratio |
+|------------------------------------------------------------ |---------:|----------:|----------:|------:|----------:|------------:|
+|               'Enumerate all values from large IbpTree2(3)' | 1.951 ms | 0.0107 ms | 0.0100 ms |  0.43 |      90 B |        1.48 |
+|              'Enumerate all values from large IbpTree2(16)' | 1.293 ms | 0.0118 ms | 0.0110 ms |  0.29 |      90 B |        1.48 |
+|             'Enumerate all values from large IbpTree2(128)' | 1.182 ms | 0.0063 ms | 0.0059 ms |  0.26 |      90 B |        1.48 |
+| 'Enumerate all values from large ImmutableSortedDictionary' | 4.496 ms | 0.0301 ms | 0.0235 ms |  1.00 |      61 B |        1.00 |
 
-|                                                                 Method |     Mean |    Error |   StdDev | Ratio |   Gen0 | Allocated | Alloc Ratio |
-|----------------------------------------------------------------------- |---------:|---------:|---------:|------:|-------:|----------:|------------:|
-|               'Enumerate the first 1000 values from large IbpTree2(3)' | 48.93 us | 0.226 us | 0.211 us |  1.05 | 3.7231 |   47256 B |      151.46 |
-|              'Enumerate the first 1000 values from large IbpTree2(16)' | 32.65 us | 0.127 us | 0.119 us |  0.70 | 0.4883 |    6840 B |       21.92 |
-|             'Enumerate the first 1000 values from large IbpTree2(128)' | 30.65 us | 0.124 us | 0.116 us |  0.66 | 0.1526 |    1984 B |        6.36 |
-| 'Enumerate the first 1000 values from large ImmutableSortedDictionary' | 46.75 us | 0.090 us | 0.084 us |  1.00 |      - |     312 B |        1.00 |
+|                                                                 Method |     Mean |    Error |   StdDev | Ratio | Allocated | Alloc Ratio |
+|----------------------------------------------------------------------- |---------:|---------:|---------:|------:|----------:|------------:|
+|               'Enumerate the first 1000 values from large IbpTree2(3)' | 30.66 us | 0.230 us | 0.216 us |  0.61 |     344 B |        1.10 |
+|              'Enumerate the first 1000 values from large IbpTree2(16)' | 24.99 us | 0.218 us | 0.193 us |  0.50 |     344 B |        1.10 |
+|             'Enumerate the first 1000 values from large IbpTree2(128)' | 23.19 us | 0.121 us | 0.108 us |  0.47 |     344 B |        1.10 |
+| 'Enumerate the first 1000 values from large ImmutableSortedDictionary' | 49.86 us | 0.148 us | 0.138 us |  1.00 |     312 B |        1.00 |
 
 |                                                                Method |      Mean |    Error |   StdDev | Ratio | RatioSD |    Gen0 | Allocated | Alloc Ratio |
 |---------------------------------------------------------------------- |----------:|---------:|---------:|------:|--------:|--------:|----------:|------------:|

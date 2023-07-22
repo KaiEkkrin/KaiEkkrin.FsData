@@ -235,35 +235,15 @@ module IbpTree2 =
 
         // ## Enumerate all key-value pairs in order ##
 
-        let rec enumerateAll node = seq {
-            use lease = borrowNodeStack ()
+        let enumerateAll node = seq {
+            // TODO if this reduces allocations, clean up the interface and make the partial enumerate
+            // be able to use it too, avoiding the seq { ... } wrapping.
+            let lease = borrowNodeStack ()
             let stack = lease.Stack
-
             stack[0].Index <- 0
             stack[0].Node <- node
-            let mutable stackIndex = 0
-            while stackIndex >= 0 do
-                match stack[stackIndex].Node with
-                | Int intNode ->
-                    let nodeIndex = stack[stackIndex].Index
-                    stack[stackIndex].Index <- nodeIndex + 1
-                    if nodeIndex > intNode.Nodes.Length then
-                        // I've reached the end of this node and need to go back to
-                        // the previous frame of the stack.
-                        stackIndex <- stackIndex - 1
-
-                    else
-                        // Push the next node onto the stack.
-                        stackIndex <- stackIndex + 1
-                        stack[stackIndex].Index <- 0
-                        stack[stackIndex].Node <-
-                            if nodeIndex = intNode.Nodes.Length then intNode.Last
-                            else intNode.Nodes[nodeIndex].Value
-
-                | Leaf leafNode ->
-                    // I can yield this all in one go without further messing with the stack
-                    for value in leafNode.Values do yield value
-                    stackIndex <- stackIndex - 1
+            use enumerator = new TreeEnumerator<'TKey, 'TValue> (lease, node)
+            while enumerator.MoveNext () do yield enumerator.Current
         }
 
         // ## Debug: check widths ##
@@ -318,7 +298,7 @@ module IbpTree2 =
             for key in debugGetIntKeysNode Root do
                 excessIntKeys.Add key |> ignore
 
-            for kv in enumerateAll Root do
+            for (kv: KeyValuePair<'TKey, 'TValue>) in enumerateAll Root do
                 excessIntKeys.Remove kv.Key |> ignore
 
             if excessIntKeys.Count > 0 then
@@ -929,6 +909,13 @@ module IbpTree2 =
             | Deleted -> Tree (B, Count - 1, Depth, Comparer, [||] |> LeafNode |> Leaf)
             | _ -> failwith "Unhandled delete case" // shouldn't reach this
 
+        member this.EnumerateAll () =
+            let lease = borrowNodeStack ()
+            let stack = lease.Stack
+            stack[0].Index <- 0
+            stack[0].Node <- Root
+            new TreeEnumerator<'TKey, 'TValue> (lease, Root)
+
         member this.EnumerateFrom key = findSeqInNode key Root
 
         member this.First () = firstInNode Root
@@ -972,12 +959,70 @@ module IbpTree2 =
             sb.ToString ()
 
         interface System.Collections.IEnumerable with
-            member this.GetEnumerator () =
-                (enumerateAll Root).GetEnumerator ()
+            member this.GetEnumerator () = this.EnumerateAll ()
 
         interface IEnumerable<KeyValuePair<'TKey, 'TValue> > with
-            member this.GetEnumerator () =
-                (enumerateAll Root).GetEnumerator ()
+            member this.GetEnumerator () = this.EnumerateAll ()
+
+    and TreeEnumerator<'TKey, 'TValue>(Lease: IStackLease<'TKey, 'TValue>, Node: Node<'TKey, 'TValue>) =
+        let mutable stack = Lease.Stack
+        let mutable stackIndex = 0
+        let mutable current = Unchecked.defaultof< KeyValuePair<'TKey, 'TValue> >
+        let mutable isDisposed = false
+
+        member _.Current = current
+
+        member _.MoveNext () =
+            let mutable found = false
+            while not found && stackIndex >= 0 do
+                let nodeIndex = stack[stackIndex].Index
+                stack[stackIndex].Index <- nodeIndex + 1
+                match stack[stackIndex].Node with
+                | Int intNode ->
+                    if nodeIndex > intNode.Nodes.Length then
+                        // I've reached the end of this node and need to go back to
+                        // the previous frame of the stack.
+                        stackIndex <- stackIndex - 1
+
+                    else
+                        // Push the next node onto the stack.
+                        stackIndex <- stackIndex + 1
+                        stack[stackIndex].Index <- 0
+                        stack[stackIndex].Node <-
+                            if nodeIndex = intNode.Nodes.Length then intNode.Last
+                            else intNode.Nodes[nodeIndex].Value
+
+                | Leaf leafNode ->
+                    if nodeIndex >= leafNode.Values.Length then
+                        // I've reached the end of this node and need to go back to
+                        // the previous frame of the stack.
+                        stackIndex <- stackIndex - 1
+
+                    else
+                        current <- leafNode.Values[nodeIndex]
+                        found <- true
+
+            found
+
+        interface IDisposable with
+            member _.Dispose () =
+                if not isDisposed then
+                    Lease.Dispose ()
+                    stack <- Unchecked.defaultof< NodeStackFrame<'TKey, 'TValue>[] > // to prevent further usage
+                    isDisposed <- true
+
+        interface System.Collections.IEnumerator with
+            member _.Current = current :> obj
+
+            member this.MoveNext () = this.MoveNext ()
+
+            member _.Reset () =
+                stackIndex <- 0
+                stack[0].Index <- 0
+                stack[0].Node <- Node
+
+        interface IEnumerator< KeyValuePair<'TKey, 'TValue> > with
+            member _.Current = current
 
     let bValueFor<'T> = Math.Max (3, 64_000 / sizeof<'T>)
 
