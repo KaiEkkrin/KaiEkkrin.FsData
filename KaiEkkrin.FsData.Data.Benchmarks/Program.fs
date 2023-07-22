@@ -2,6 +2,7 @@
 open System.Collections.Generic
 open System.Collections.Immutable
 open BenchmarkDotNet.Attributes
+open BenchmarkDotNet.Diagnosers
 open BenchmarkDotNet.Running
 open KaiEkkrin.FsData.Data
 
@@ -9,6 +10,9 @@ open KaiEkkrin.FsData.Data
 // Run with profiling using `dotnet run -c Release -- -p EP`
 // Analyse .speedscope.json files with https://www.speedscope.app/
 // (see https://benchmarkdotnet.org/articles/features/event-pipe-profiler.html for more benchmark details)
+
+// To analyse memory allocations for a benchmark, add this attribute to the benchmark class: (which will slow it down a lot)
+// [<EventPipeProfiler(profile = EventPipeProfile.GcVerbose)>]
 
 // TODO try using other, more complicated keys and values here.
 // For now I'm going to use a string key and this value type:
@@ -178,6 +182,7 @@ type TreeEnumerateMid() =
     member this.EnumerateMidLargeIsd() =
         largeIsd |> Seq.filter (fun kv -> kv.Key < randomKeysToDelete[0]) |> Seq.take 1000 |> Seq.last
 
+//[<EventPipeProfiler(profile = EventPipeProfile.GcVerbose)>]
 [<MemoryDiagnoser>]
 type TreeFind() =
     // so we're not always looking for the same one

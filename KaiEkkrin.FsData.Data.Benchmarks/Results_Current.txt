@@ -33,12 +33,12 @@
 |             'Enumerate 1000 values from within a large IbpTree2(128)' | 25.16 us | 0.114 us | 0.106 us |  0.35 | 0.0305 |     408 B |        0.89 |
 | 'Enumerate 1000 values from within a large ImmutableSortedDictionary' | 71.80 us | 0.269 us | 0.252 us |  1.00 |      - |     456 B |        1.00 |
 
-|                                                       Method |     Mean |   Error |  StdDev | Ratio | RatioSD |   Gen0 | Allocated | Alloc Ratio |
-|------------------------------------------------------------- |---------:|--------:|--------:|------:|--------:|-------:|----------:|------------:|
-|               'Find a value from within a large IbpTree2(3)' | 635.8 ns | 7.15 ns | 6.69 ns |  3.69 |    0.08 | 0.0019 |      24 B |          NA |
-|              'Find a value from within a large IbpTree2(16)' | 382.0 ns | 5.16 ns | 4.83 ns |  2.22 |    0.06 | 0.0019 |      24 B |          NA |
-|             'Find a value from within a large IbpTree2(128)' | 258.3 ns | 2.37 ns | 2.22 ns |  1.50 |    0.04 | 0.0019 |      24 B |          NA |
-| 'Find a value from within a large ImmutableSortedDictionary' | 172.1 ns | 3.45 ns | 3.55 ns |  1.00 |    0.00 |      - |         - |          NA |
+|                                                       Method |     Mean |   Error |  StdDev | Ratio | RatioSD | Allocated | Alloc Ratio |
+|------------------------------------------------------------- |---------:|--------:|--------:|------:|--------:|----------:|------------:|
+|               'Find a value from within a large IbpTree2(3)' | 316.9 ns | 2.38 ns | 2.11 ns |  1.68 |    0.03 |         - |          NA |
+|              'Find a value from within a large IbpTree2(16)' | 220.1 ns | 4.33 ns | 4.99 ns |  1.17 |    0.03 |         - |          NA |
+|             'Find a value from within a large IbpTree2(128)' | 184.7 ns | 1.79 ns | 1.67 ns |  0.98 |    0.02 |         - |          NA |
+| 'Find a value from within a large ImmutableSortedDictionary' | 189.1 ns | 2.87 ns | 2.68 ns |  1.00 |    0.00 |         - |          NA |
 
 |                                                           Method |     Mean |   Error |  StdDev | Ratio | RatioSD |     Gen0 |   Gen1 |  Allocated | Alloc Ratio |
 |----------------------------------------------------------------- |---------:|--------:|--------:|------:|--------:|---------:|-------:|-----------:|------------:|
