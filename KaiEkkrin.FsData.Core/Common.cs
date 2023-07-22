@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace KaiEkkrin.FsData.Core;
+﻿namespace KaiEkkrin.FsData.Core;
 
 /// <summary>
 /// Trivial stuff used by the rest
