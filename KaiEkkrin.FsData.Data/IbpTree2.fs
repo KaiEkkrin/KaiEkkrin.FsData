@@ -183,55 +183,72 @@ module IbpTree2 =
         let lengthOfSplitIntNode = getLengthOfSplitIntNode B
         let lengthOfSplitLeafNode = getLengthOfSplitLeafNode B
 
-        let rec findIndexInLeaf key (node: LeafNode<'TKey, 'TValue>) (index: outref<int>) =
+        let findIndexInLeaf key (node: LeafNode<'TKey, 'TValue>) (index: outref<int>) =
             // The node is sorted in ascending order of keys.
             // I'm looking for either the index where the node's key equals the given one
             // or the index of the first node with a key less than the given one.
             // Finds within a range of the array between a (inclusive) and b (exclusive.)
-            doFind key node 0 node.Values.Length &index
 
-        and doFindIterate key (node: LeafNode<'TKey, 'TValue>) a b (index: outref<int>) =
-            // Iterate from start (better for smaller nodes)
-            if b <= a then
-                index <- a
-                false
-            else
-                match Comparer.Compare (key, node.Values[a].Key) with
-                | 0 ->
-                    index <- a
-                    true
-                | n when n < 0 ->
-                    index <- a
-                    false
-                | _ -> doFindIterate key node (a + 1) b &index
+            let mutable a = 0
+            let mutable b = node.Values.Length
+            let mutable notFound = true
+            let mutable exactMatch = false
+            index <- b
 
-        and doFind key (node: LeafNode<'TKey, 'TValue>) a b (index: outref<int>) =
-            if (b - a) < 8 then doFindIterate key node a b &index
-            else
+            // Binary chop for large windows
+            while notFound && (b - a) >= 8 do
                 let i = (a + b) / 2
                 match Comparer.Compare (key, node.Values[i].Key) with
                 | 0 ->
                     index <- i
-                    true
-                | n when n < 0 -> doFind key node a i &index
-                | _ -> doFind key node (i + 1) b &index
+                    exactMatch <- true
+                    notFound <- false
+
+                | n when n < 0 -> b <- i
+                | _ -> a <- i + 1
+
+            // Iterate over smaller windows
+            while notFound && a < b do
+                match Comparer.Compare (key, node.Values[a].Key) with
+                | 0 ->
+                    index <- a
+                    exactMatch <- true
+                    notFound <- false
+
+                | n when n < 0 ->
+                    index <- a
+                    notFound <- false
+
+                | _ -> a <- a + 1
+
+            if a = b then index <- b
+            exactMatch
 
         let findIndexInInt key (node: IntNode<'TKey, 'TValue>) =
             // The node is sorted in ascending order of keys.
             // I'm looking for the index of the first node such that the given key
             // is less than the node's key.
-            let rec doFindIterate a b =
-                if b <= a || Comparer.Compare (key, node.Nodes[a].Key) < 0 then a
-                else doFindIterate (a + 1) b
 
-            let rec doFind a b =
-                if (b - a) < 16 then doFindIterate a b
-                else
-                    let i = (a + b) / 2
-                    if Comparer.Compare (key, node.Nodes[i].Key) < 0 then doFind a i
-                    else doFind i b
+            let mutable a = 0
+            let mutable b = node.Nodes.Length
+            let mutable notFound = true
 
-            doFind 0 node.Nodes.Length
+            // Binary chop for large windows
+            while notFound && (b - a) >= 16 do
+                let i = (a + b) / 2
+                match Comparer.Compare (key, node.Nodes[i].Key) with
+                | 0 ->
+                    a <- i + 1
+                    notFound <- false
+
+                | n when n < 0 -> b <- i
+                | _ -> a <- i + 1
+
+            while notFound && a < b do
+                if Comparer.Compare (key, node.Nodes[a].Key) < 0 then notFound <- false
+                else a <- a + 1
+
+            if notFound then b else a
 
         // ## Enumerate all key-value pairs in order ##
 
