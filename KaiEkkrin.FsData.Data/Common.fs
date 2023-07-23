@@ -10,6 +10,11 @@ module Common =
         let (div, rem) = Math.DivRem(a, b)
         if rem = 0 then div else div + 1
 
+    let swap<'T> (a: byref<'T>) (b: byref<'T>) =
+        let tmp = a
+        a <- b
+        b <- tmp
+
     type IndexedKeyValuePair<'TKey, 'TValue> = struct
         val Index: int
         val Key: 'TKey

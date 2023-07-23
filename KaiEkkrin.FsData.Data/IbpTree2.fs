@@ -146,26 +146,49 @@ module IbpTree2 =
 
     // ## Create from sorted array ##
 
-    let createSubtree<'TKey, 'TValue> b (array: KeyValuePair<'TKey, 'TValue> []) =
+    // IMPORTANT : The returned array, if its length is greater than 0, is borrowed from the array pool
+    // and must be returned.
+
+    let createSubtree<'TKey, 'TValue> b (array: KeyValuePair<'TKey, 'TValue> []) (output: outref< NodeCreation<'TKey, 'TValue> [] >) =
         // Deal with the "none" situation separately
-        if array.Length = 0 then Array.empty< NodeCreation<'TKey, 'TValue> >
+        if array.Length = 0 then
+            output <- Array.empty< NodeCreation<'TKey, 'TValue> >
+            0
+
         else
             // Create the leaf nodes
             let lengthOfSplitLeafNode = getLengthOfSplitLeafNode b
-            let leafNodes =
-                arrayToLeafNodeChunker.Split lengthOfSplitLeafNode (b - 1) array
+            let span = ReadOnlySpan array
+            let maxLeafCount = arrayToLeafNodeChunker.GetMaxChunkCount (lengthOfSplitLeafNode, span)
+            let mutable nodes = ArrayPool< NodeCreation<'TKey, 'TValue> >.Shared.Rent maxLeafCount
+            let mutable nodeCount = arrayToLeafNodeChunker.Split (lengthOfSplitLeafNode, (b - 1), span, nodes)
 
-            // Remember, each NodeCreation corresponds to a child node in the internal
-            // node, not to a key in it; there's always one more child nodes than keys
-            let minIntChunkSize = (getLengthOfSplitIntNode b) + 1
+            if nodeCount = 1 then
+                output <- nodes
+                1
 
-            let rec createSubtreeRec (array: NodeCreation<'TKey, 'TValue> []) =
-                if array.Length <= 1 then array
-                else
-                    let creations = arrayToIntNodeChunker.Split minIntChunkSize b array
-                    createSubtreeRec creations
+            else
+                // Remember, each NodeCreation corresponds to a child node in the internal
+                // node, not to a key in it; there's always one more child nodes than keys.
+                let minIntChunkSize = (getLengthOfSplitIntNode b) + 1
 
-            createSubtreeRec leafNodes
+                // Borrow another temporary array to write into:
+                let maxIntCount = arrayToIntNodeChunker.GetMaxChunkCount (minIntChunkSize, (ReadOnlySpan nodes).Slice (0, nodeCount))
+                let mutable nodes2 = ArrayPool< NodeCreation<'TKey, 'TValue> >.Shared.Rent maxIntCount
+                try
+                    while nodeCount > 1 do
+                        // Do the next split:
+                        nodeCount <- arrayToIntNodeChunker.Split (minIntChunkSize, b, (ReadOnlySpan nodes).Slice (0, nodeCount), nodes2)
+
+                        // Swap the two arrays around, so that I will next read out of `nodes` (and `nodeCount` once
+                        // again represents its count)
+                        Common.swap &nodes &nodes2
+
+                    output <- nodes
+                    nodeCount
+
+                finally
+                    ArrayPool.Shared.Return nodes2
 
     // ## Enumeration stacks ##
 
@@ -944,14 +967,19 @@ module IbpTree2 =
             let valuesArray = ArrayUtil.sortedAndDistinct cmp eqCmp values
 
             // Make a suitable root for the tree
-            let creations = createSubtree b valuesArray
-            let depth, root =
-                match creations.Length with
-                | 0 -> (1, emptyLeaf<'TKey, 'TValue>)
-                | 1 -> (creations[0].Depth, creations[0].Node)
-                | _ -> failwithf "Returned %d creations, should be 0 or 1" creations.Length
+            let mutable creations = Array.empty< NodeCreation<'TKey, 'TValue> >
+            let creationCount = createSubtree b valuesArray &creations
+            try
+                let depth, root =
+                    match creationCount with
+                    | 0 -> (1, emptyLeaf<'TKey, 'TValue>)
+                    | 1 -> (creations[0].Depth, creations[0].Node)
+                    | _ -> failwithf "Returned %d creations, should be 0 or 1" creationCount
 
-            Tree (b, valuesArray.Length, depth, cmp, root)
+                Tree (b, valuesArray.Length, depth, cmp, root)
+
+            finally
+                if creationCount > 0 then ArrayPool.Shared.Return creations
 
         override _.ToString () =
             // Debug print

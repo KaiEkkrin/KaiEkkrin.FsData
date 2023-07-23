@@ -181,69 +181,83 @@ module ArrayUtil =
     // Breaks an array into an array of chunks of size between `minChunkSize` and `maxChunkSize` inclusive,
     // if it can.
     type [<AbstractClass>] ArrayChunkerBase<'TIn, 'TOut>() =
+
+        // Look for a chunk size such that we don't end up with an overly-small remainder that we can't fill.
+        // Emits the array of chunk sizes to use.
+        // This method is important to get good performance for tree create, so I'm going to do nasty things to it here :)
+        let lookForSplit minChunkSize maxChunkSize (sizes: int[]) (array: ReadOnlySpan<'TIn>) =
+            let mutable chunkCount = -1
+            let mutable notFound = true
+            let mutable sz = maxChunkSize
+            while notFound && sz >= minChunkSize do
+                let (fullChunks, leftover) = Math.DivRem (array.Length, sz)
+                if leftover = 0 then
+                    for i in 0..(fullChunks - 1) do
+                        sizes[i] <- sz
+                    chunkCount <- fullChunks
+                    notFound <- false
+    
+                else
+                    chunkCount <- fullChunks + 1
+                    sizes[0] <- leftover
+                    for i in 1..fullChunks do
+                        sizes[i] <- sz
+    
+                    if leftover >= minChunkSize then notFound <- false
+                    else
+                        // Walk through the list borrowing enough from the next item to make each item
+                        // up to min size if it isn't yet. If I reach the end and I still have something
+                        // left to borrow, I've failed to generate a good list.
+                        // This function will also reverse the chunk size list, but that doesn't matter
+                        let mutable debt = 0
+                        let mutable index = 0
+                        while index < chunkCount && (index = 0 || debt > 0) do
+                            let withoutDebt = sizes[index] - debt
+                            if withoutDebt >= minChunkSize then
+                                sizes[index] <- withoutDebt
+                                debt <- 0
+                            else
+                                sizes[index] <- minChunkSize
+                                debt <- minChunkSize - withoutDebt
+    
+                            index <- index + 1
+
+                        if debt = 0 then notFound <- false
+                        else sz <- sz - 1 // try a smaller chunk size
+
+            if notFound then failwithf "Failed to find a valid split for array of length %d, %d <= chunkSize <= %d" array.Length minChunkSize maxChunkSize
+            else chunkCount
+
         abstract member CreateChunk : ReadOnlySpan<'TIn> -> 'TOut
 
-        member this.Split minChunkSize maxChunkSize (array: 'TIn []) =
+        member _.GetMaxChunkCount (minChunkSize, array: ReadOnlySpan<'TIn>) = Common.divCeil (array.Length) minChunkSize
+
+        // Splits `array` into `output` (which must be of length GetMaxChunkCount or more.)
+        // Returns the length of the output.
+        member this.Split (minChunkSize, maxChunkSize, (array: ReadOnlySpan<'TIn>), (output: Span<'TOut>)) =
 #if DEBUG
             if minChunkSize < 1 || minChunkSize > maxChunkSize then failwithf "Invalid chunk sizes: %d, %d" minChunkSize maxChunkSize
+            if output.Length < (this.GetMaxChunkCount (minChunkSize, array)) then failwith "Output array too small"
 #endif
 
-            // Look for a chunk size such that we don't end up with an overly-small remainder that we can't fill.
-            // Emits the array of chunk sizes to use.
-            // This method is important to get good performance for tree create, so I'm going to do nasty things to it here :)
-            let rec lookForSplit sz (sizes: int[]) =
-                if sz < minChunkSize then
-                    failwithf "Can't find a valid split for a %d length array to chunk sizes %d, %d" array.Length minChunkSize maxChunkSize
-                else
-                    let (fullChunks, leftover) = Math.DivRem (array.Length, sz)
-                    if leftover = 0 then
-                        for i in 0..(fullChunks - 1) do
-                            sizes[i] <- sz
-                        fullChunks
-    
-                    else
-                        let chunkCount = fullChunks + 1
-                        sizes[0] <- leftover
-                        for i in 1..fullChunks do
-                            sizes[i] <- sz
-    
-                        if leftover >= minChunkSize then chunkCount
-                        else
-                            // Walk through the list borrowing enough from the next item to make each item
-                            // up to min size if it isn't yet. If I reach the end and I still have something
-                            // left to borrow, I've failed to generate a good list.
-                            // This function will also reverse the chunk size list, but that doesn't matter
-                            let mutable debt = 0
-                            let mutable index = 0
-                            while index < chunkCount && (index = 0 || debt > 0) do
-                                let withoutDebt = sizes[index] - debt
-                                if withoutDebt >= minChunkSize then
-                                    sizes[index] <- withoutDebt
-                                    debt <- 0
-                                else
-                                    sizes[index] <- minChunkSize
-                                    debt <- minChunkSize - withoutDebt
-    
-                                index <- index + 1
+            if array.Length = 0 then 0
+            elif array.Length <= maxChunkSize then
+                output[0] <- this.CreateChunk array
+                1
 
-                            if debt = 0 then chunkCount else lookForSplit (sz - 1) sizes
-
-            let span = ReadOnlySpan array
-            if array.Length <= maxChunkSize then [| this.CreateChunk span |]
             else
                 let maxChunkCount = Common.divCeil array.Length minChunkSize
                 let chunkSizes = ArrayPool<int>.Shared.Rent maxChunkCount
                 try
-                    let chunkCount = lookForSplit maxChunkSize chunkSizes
-                    let chunks = Array.zeroCreate<'TOut> chunkCount
+                    let chunkCount = lookForSplit minChunkSize maxChunkSize chunkSizes array
                     let mutable arrayIndex = 0
                     for chunkIndex in 0..(chunkCount - 1) do
                         let sz = chunkSizes[chunkIndex]
-                        let chunkSpan = span.Slice (arrayIndex, sz)
-                        chunks[chunkIndex] <- this.CreateChunk chunkSpan
+                        let chunkSpan = array.Slice (arrayIndex, sz)
+                        output[chunkIndex] <- this.CreateChunk chunkSpan
                         arrayIndex <- arrayIndex + sz
     
-                    chunks
+                    chunkCount
     
                 finally
                     ArrayPool<int>.Shared.Return chunkSizes
@@ -257,6 +271,14 @@ module ArrayUtil =
             chunk
 
     let arrayToArrayChunker<'T> = ArrayToArrayChunker<'T>()
+
+    // A slow wrapper function for convenient unit testing only
+    let splitIntoChunks<'T> minChunkSize maxChunkSize (array: 'T []) =
+        let span = ReadOnlySpan array
+        let maxChunkCount = arrayToArrayChunker.GetMaxChunkCount (minChunkSize, span)
+        let output = Array.zeroCreate<'T []> maxChunkCount
+        let chunkCount = arrayToArrayChunker.Split (minChunkSize, maxChunkSize, span, output)
+        output[..(chunkCount - 1)]
 
     // Sorts in ascending order of keys (using the given comparer), and removes any duplicates
     // (leaving in the element that was originally the latest in the list)

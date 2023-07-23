@@ -70,6 +70,7 @@ type TreeCreate() =
 
         builder.ToImmutable()
 
+[<EventPipeProfiler(profile = EventPipeProfile.GcVerbose)>]
 [<MemoryDiagnoser>]
 type TreeInsertEmpty() =
     [<Benchmark(Description = "Insert 1000 random values into empty IbpTree2(3)")>]
