@@ -15,7 +15,7 @@ type Tests(output: ITestOutputHelper) =
 
     [<Property>]
     let ``An empty array receives one item`` (item: int) =
-        let spliced = ArrayUtil.arraySplice1 0 0 item [||]
+        let spliced = ArrayUtil.arraySplice1 0 0 item (ReadOnlySpan Array.empty<int>)
         spliced |> should equal [|item|]
 
     [<Property>]
@@ -23,7 +23,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 0 0 "A" sourceArray
+            let destinationArray = ArrayUtil.arraySplice1 0 0 "A" (ReadOnlySpan sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = 0 then Assert.Equal ("A", v)
@@ -34,7 +34,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 length 0 "A" sourceArray
+            let destinationArray = ArrayUtil.arraySplice1 length 0 "A" (ReadOnlySpan sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = length then Assert.Equal ("A", v)
@@ -53,7 +53,7 @@ type Tests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| fun (index, length) ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 index 0 "A" sourceArray
+            let destinationArray = ArrayUtil.arraySplice1 index 0 "A" (ReadOnlySpan sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = index then Assert.Equal ("A", v)
@@ -65,7 +65,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 0 1 "A" sourceArray
+            let destinationArray = ArrayUtil.arraySplice1 0 1 "A" (ReadOnlySpan sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = 0 then Assert.Equal ("A", v)
@@ -76,7 +76,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 (length - 1) 1 "A" sourceArray
+            let destinationArray = ArrayUtil.arraySplice1 (length - 1) 1 "A" (ReadOnlySpan sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = (length - 1) then Assert.Equal ("A", v)
@@ -95,7 +95,7 @@ type Tests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| fun (index, length) ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 index 1 "A" sourceArray
+            let destinationArray = ArrayUtil.arraySplice1 index 1 "A" (ReadOnlySpan sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = index then Assert.Equal ("A", v)
@@ -106,7 +106,7 @@ type Tests(output: ITestOutputHelper) =
         let arb = Gen.choose (1, 100) |> Arb.fromGen
         Prop.forAll arb <| fun length ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySplice1 0 length "A" sourceArray
+            let destinationArray = ArrayUtil.arraySplice1 0 length "A" (ReadOnlySpan sourceArray)
             Assert.Equal (1, destinationArray.Length)
             Assert.Equal ("A", destinationArray[0])
 
@@ -114,7 +114,7 @@ type Tests(output: ITestOutputHelper) =
 
     [<Property>]
     let ``An empty array receives one item`` (item: int) =
-        let spliced = ArrayUtil.arraySpliceX 0 0 [|item|] [||]
+        let spliced = ArrayUtil.arraySpliceX 0 0 (ReadOnlySpan [|item|]) (ReadOnlySpan Array.empty<int>)
         Assert.Equal (1, spliced.Length)
         Assert.Equal (item, spliced[0])
 
@@ -123,7 +123,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX 0 0 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.arraySpliceX 0 0 (ReadOnlySpan [|"A"|]) (ReadOnlySpan sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = 0 then Assert.Equal ("A", v)
@@ -134,7 +134,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX length 0 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.arraySpliceX length 0 (ReadOnlySpan [|"A"|]) (ReadOnlySpan sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = length then Assert.Equal ("A", v)
@@ -153,7 +153,7 @@ type Tests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| fun (index, length) ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX index 0 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.arraySpliceX index 0 (ReadOnlySpan [|"A"|]) (ReadOnlySpan sourceArray)
             Assert.Equal (length + 1, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = index then Assert.Equal ("A", v)
@@ -165,7 +165,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX 0 1 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.arraySpliceX 0 1 (ReadOnlySpan [|"A"|]) (ReadOnlySpan sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = 0 then Assert.Equal ("A", v)
@@ -176,7 +176,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll (Arb.Default.PositiveInt()) <| fun l ->
             let length = l.Get
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX (length - 1) 1 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.arraySpliceX (length - 1) 1 (ReadOnlySpan [|"A"|]) (ReadOnlySpan sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = (length - 1) then Assert.Equal ("A", v)
@@ -195,7 +195,7 @@ type Tests(output: ITestOutputHelper) =
 
         Prop.forAll arb <| fun (index, length) ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX index 1 [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.arraySpliceX index 1 (ReadOnlySpan [|"A"|]) (ReadOnlySpan sourceArray)
             Assert.Equal (length, destinationArray.Length)
             destinationArray |> Array.iteri (fun i v ->
                 if i = index then Assert.Equal ("A", v)
@@ -206,7 +206,7 @@ type Tests(output: ITestOutputHelper) =
         let arb = Gen.choose (1, 100) |> Arb.fromGen
         Prop.forAll arb <| fun length ->
             let sourceArray = Array.init length (fun i -> sprintf "%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX 0 length [|"A"|] sourceArray
+            let destinationArray = ArrayUtil.arraySpliceX 0 length (ReadOnlySpan [|"A"|]) (ReadOnlySpan sourceArray)
             Assert.Equal (1, destinationArray.Length)
             Assert.Equal ("A", destinationArray[0])
 
@@ -216,7 +216,7 @@ type Tests(output: ITestOutputHelper) =
         let arb = Gen.choose (1, 100) |> Arb.fromGen
         Prop.forAll arb <| fun length ->
             let newItems = Array.init length (fun i -> sprintf "%d" i)
-            let spliced = ArrayUtil.arraySpliceX 0 0 newItems [||]           
+            let spliced = ArrayUtil.arraySpliceX 0 0 (ReadOnlySpan newItems) (ReadOnlySpan Array.empty<string>)
             Assert.Equal (length, spliced.Length)
             spliced |> Array.iteri (fun i v ->
                 Assert.Equal (sprintf "%d" i, v))
@@ -232,7 +232,7 @@ type Tests(output: ITestOutputHelper) =
         Prop.forAll arb <| fun (sourceLength, spliceLength) ->
             let sourceArray = Array.init sourceLength (fun i -> sprintf "%d" i)
             let spliceArray = Array.init spliceLength (fun i -> sprintf "X%d" i)
-            let destinationArray = ArrayUtil.arraySpliceX 1 (sourceLength - 2) spliceArray sourceArray
+            let destinationArray = ArrayUtil.arraySpliceX 1 (sourceLength - 2) (ReadOnlySpan spliceArray) (ReadOnlySpan sourceArray)
 
             Assert.Equal (spliceLength + 2, destinationArray.Length)
             Assert.Equal ("0", destinationArray[0])
