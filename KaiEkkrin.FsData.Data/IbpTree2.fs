@@ -80,6 +80,32 @@ module IbpTree2 =
         new (depth, minKey, node) = { Depth = depth; MinKey = minKey; Node = node }
         end
 
+    // For the initial node chunking: creates NodeCreations of LeafNodes
+    type ArrayToLeafNodeChunker<'TKey, 'TValue>() =
+        inherit ArrayUtil.ArrayChunkerBase< KeyValuePair<'TKey, 'TValue>, NodeCreation<'TKey, 'TValue> >()
+
+        override _.CreateChunk span =
+            let values = Array.zeroCreate< KeyValuePair<'TKey, 'TValue> > span.Length
+            span.CopyTo (values.AsSpan ())
+            NodeCreation (1, span[0].Key, Leaf (LeafNode values))
+
+    let arrayToLeafNodeChunker<'TKey, 'TValue> = ArrayToLeafNodeChunker<'TKey, 'TValue>()
+
+    type ArrayToIntNodeChunker<'TKey, 'TValue>() =
+        inherit ArrayUtil.ArrayChunkerBase< NodeCreation<'TKey, 'TValue>, NodeCreation<'TKey, 'TValue> >()
+
+        override _.CreateChunk span =
+            // Remember, in the IntNode `nodes` array, for each key-value pair kv, kv.Value is
+            // the node containing items with key < kv.Key.
+            let nodes = Array.zeroCreate< KeyValuePair<'TKey, Node<'TKey, 'TValue> > > (span.Length - 1)
+            for i in 0..(span.Length - 2) do
+                nodes[i] <- KeyValuePair (span[i + 1].MinKey, span[i].Node)
+
+            let intNode = IntNode (nodes, span[span.Length - 1].Node)
+            NodeCreation (span[0].Depth + 1, span[0].MinKey, Int intNode)
+
+    let arrayToIntNodeChunker<'TKey, 'TValue> = ArrayToIntNodeChunker<'TKey, 'TValue>()
+
     // When doing an insert, I'll either return a single node (updated with the new value)
     // or a split of it, (N1, K1, N2) where K is such that
     // Key(X) < K1 for all X in N1
@@ -120,36 +146,24 @@ module IbpTree2 =
 
     // ## Create from sorted array ##
 
-    let creationsToIntNode<'TKey, 'TValue> (creations: NodeCreation<'TKey, 'TValue> []) =
-        // Remember, in the IntNode `nodes` array, for each key-value pair kv, kv.Value is
-        // the node containing items with key < kv.Key.
-        let nodes =
-            creations[..(creations.Length - 2)]
-            |> Array.mapi (fun i x -> KeyValuePair(creations[i + 1].MinKey, x.Node))
-
-        let intNode = IntNode (nodes, creations[creations.Length - 1].Node)
-        NodeCreation (creations[0].Depth + 1, creations[0].MinKey, Int intNode)
-
     let createSubtree<'TKey, 'TValue> b (array: KeyValuePair<'TKey, 'TValue> []) =
         // Deal with the "none" situation separately
-        if array.Length = 0 then [||]
+        if array.Length = 0 then Array.empty< NodeCreation<'TKey, 'TValue> >
         else
             // Create the leaf nodes
             let lengthOfSplitLeafNode = getLengthOfSplitLeafNode b
             let leafNodes =
-                ArrayUtil.splitIntoChunks lengthOfSplitLeafNode (b - 1) array
-                |> Array.map (fun c -> NodeCreation (1, c[0].Key, c |> LeafNode |> Leaf))
+                arrayToLeafNodeChunker.Split lengthOfSplitLeafNode (b - 1) array
 
             // Remember, each NodeCreation corresponds to a child node in the internal
             // node, not to a key in it; there's always one more child nodes than keys
             let minIntChunkSize = (getLengthOfSplitIntNode b) + 1
 
             let rec createSubtreeRec (array: NodeCreation<'TKey, 'TValue> []) =
-                if array.Length < b then array
+                if array.Length <= 1 then array
                 else
-                    ArrayUtil.splitIntoChunks minIntChunkSize b array
-                    |> Array.map creationsToIntNode
-                    |> createSubtreeRec
+                    let creations = arrayToIntNodeChunker.Split minIntChunkSize b array
+                    createSubtreeRec creations
 
             createSubtreeRec leafNodes
 
@@ -935,7 +949,7 @@ module IbpTree2 =
                 match creations.Length with
                 | 0 -> (1, emptyLeaf<'TKey, 'TValue>)
                 | 1 -> (creations[0].Depth, creations[0].Node)
-                | _ -> (creations[0].Depth + 1, (creationsToIntNode creations).Node)
+                | _ -> failwithf "Returned %d creations, should be 0 or 1" creations.Length
 
             Tree (b, valuesArray.Length, depth, cmp, root)
 

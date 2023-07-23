@@ -251,7 +251,7 @@ type Tests(output: ITestOutputHelper) =
     }
 
     [<Property>]
-    let ``SplitIntoChunks always returns a short array as a single chunk``() =
+    let ``ArrayChunker always returns a short array as a single chunk``() =
         let arb = Arb.fromGen <| gen {
             let! (minChunkSize, maxChunkSize) = genChunkSizeRange
             let! arrayLength = Gen.choose (0, maxChunkSize)
@@ -260,13 +260,13 @@ type Tests(output: ITestOutputHelper) =
         }
 
         Prop.forAll arb <| fun (minChunkSize, maxChunkSize, array) ->
-            let chunks = ArrayUtil.splitIntoChunks minChunkSize maxChunkSize array
+            let chunks = ArrayUtil.arrayToArrayChunker.Split minChunkSize maxChunkSize array
 
             chunks.Length |> should equal 1
             chunks[0] |> should equalSeq array
 
     [<Property>]
-    let ``SplitIntoChunks always splits long arrays into valid chunks``() =
+    let ``ArrayChunker always splits long arrays into valid chunks``() =
         let arb = Arb.fromGen <| gen {
             let! (minChunkSize, maxChunkSize) = genChunkSizeRange
             let! arrayLength = Gen.choose (maxChunkSize + 1, maxChunkSize * 100)
@@ -275,7 +275,7 @@ type Tests(output: ITestOutputHelper) =
         }
 
         Prop.forAll arb <| fun (minChunkSize, maxChunkSize, array) ->
-            let chunks = ArrayUtil.splitIntoChunks minChunkSize maxChunkSize array
+            let chunks = ArrayUtil.arrayToArrayChunker.Split minChunkSize maxChunkSize array
 
             // Every chunk must be between min and max chunk sizes (inclusive)
             for chunk in chunks do
