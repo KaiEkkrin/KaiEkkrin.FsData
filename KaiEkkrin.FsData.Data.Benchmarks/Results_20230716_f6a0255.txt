@@ -1,6 +1,0 @@
-|                                                     Method |     Mean |   Error |  StdDev | Ratio | RatioSD |    Gen0 |   Gen1 | Allocated | Alloc Ratio |
-|----------------------------------------------------------- |---------:|--------:|--------:|------:|--------:|--------:|-------:|----------:|------------:|
-|               'Create IbpTree2(3) from 1000 random values' | 158.6 us | 0.82 us | 0.77 us |  0.95 |    0.00 | 14.8926 | 2.1973 |    183 KB |        3.34 |
-|              'Create IbpTree2(16) from 1000 random values' | 138.6 us | 2.77 us | 2.59 us |  0.83 |    0.02 |  5.8594 | 0.4883 |  72.66 KB |        1.32 |
-|             'Create IbpTree2(128) from 1000 random values' | 132.1 us | 0.42 us | 0.39 us |  0.79 |    0.00 |  5.1270 | 0.4883 |  63.02 KB |        1.15 |
-| 'Create ImmutableSortedDictionary from 1000 random values' | 166.3 us | 0.68 us | 0.64 us |  1.00 |    0.00 |  4.3945 | 0.4883 |  54.84 KB |        1.00 |

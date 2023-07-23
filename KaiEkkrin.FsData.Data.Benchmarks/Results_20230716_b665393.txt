@@ -1,6 +1,0 @@
-|                                                           Method |     Mean |   Error |  StdDev | Ratio | RatioSD |     Gen0 |   Gen1 |  Allocated | Alloc Ratio |
-|----------------------------------------------------------------- |---------:|--------:|--------:|------:|--------:|---------:|-------:|-----------:|------------:|
-|               'Insert 1000 random values into empty IbpTree2(3)' | 405.7 us | 6.08 us | 5.69 us |  1.49 |    0.02 |  73.7305 | 9.7656 |  908.63 KB |        1.57 |
-|              'Insert 1000 random values into empty IbpTree2(16)' | 234.0 us | 1.19 us | 1.06 us |  0.86 |    0.01 |  53.9551 | 2.1973 |  663.73 KB |        1.15 |
-|             'Insert 1000 random values into empty IbpTree2(128)' | 223.5 us | 0.96 us | 0.90 us |  0.82 |    0.01 | 134.5215 | 4.3945 | 1649.33 KB |        2.85 |
-| 'Insert 1000 random values into empty ImmutableSortedDictionary' | 271.4 us | 1.69 us | 1.58 us |  1.00 |    0.00 |  46.8750 | 4.3945 |  578.21 KB |        1.00 |
